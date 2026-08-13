@@ -11,6 +11,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:domain": "node --experimental-strip-types scripts/test-auth-policy.ts && node --experimental-strip-types scripts/test-security-headers.ts && node --experimental-strip-types scripts/test-intelligence.ts",
+    "test:ai": "tsx --tsconfig tsconfig.test.json scripts/test-ai-routes.ts",
+    "test": "npm run test:domain && npm run test:ai",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

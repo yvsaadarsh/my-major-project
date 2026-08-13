@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/generated/prisma/client": [
+        "./scripts/doubles/prisma-client.ts"
+      ],
+      "@/lib/db": [
+        "./scripts/doubles/db.ts"
+      ],
+      "@/lib/auth/context": [
+        "./scripts/doubles/auth-context.ts"
+      ],
+      "@/lib/ai": [
+        "./scripts/doubles/ai.ts"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  }
+}
