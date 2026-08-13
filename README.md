@@ -1,6 +1,6 @@
 # Project OS
 
-A multi-tenant, **non-AI** project & work-management platform. Organizations manage
+A multi-tenant, **AI** project & work-management platform. Organizations manage
 projects, milestones, tasks, dependencies, members, automations and activity —
 with tenant isolation enforced at the database level.
 
