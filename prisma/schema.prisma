@@ -1,0 +1,531 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  ADMIN
+  MANAGER
+  MEMBER
+
+  @@map("membership_role")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+
+  @@map("membership_status")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+
+  @@map("project_status")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+
+  @@map("task_status")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("task_priority")
+}
+
+enum MilestoneStatus {
+  PLANNED
+  ON_TRACK
+  AT_RISK
+  MISSED
+  DONE
+
+  @@map("milestone_status")
+}
+
+enum DependencyType {
+  BLOCKS
+  DEPENDS_ON
+  RELATED_TO
+
+  @@map("dependency_type")
+}
+
+enum AutomationTrigger {
+  TASK_OVERDUE
+  TASK_STATUS_CHANGED
+  PROJECT_HEALTH_CHANGED
+
+  @@map("automation_trigger")
+}
+
+enum AutomationAction {
+  NOTIFY_MANAGER
+  UPDATE_MILESTONE_PROGRESS
+  WRITE_AUDIT_EVENT
+
+  @@map("automation_action")
+}
+
+enum AutomationRunStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+
+  @@map("automation_run_status")
+}
+
+enum ViewType {
+  BOARD
+  LIST
+  TABLE
+  TIMELINE
+
+  @@map("view_type")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String   @db.VarChar(120)
+  email        String   @unique @db.VarChar(320)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // ── Brute-force lockout state ───────────────────────────────────────────
+  // Consecutive failures inside the rolling window, and the lock they earned.
+  // Stored on the user (not in memory) because serverless functions share no
+  // process state — an in-memory counter would reset on every cold start and
+  // provide no protection at all.
+  failedLoginCount  Int       @default(0) @map("failed_login_count")
+  lockedUntil       DateTime? @map("locked_until")
+  lastFailedLoginAt DateTime? @map("last_failed_login_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+
+  // ── Session invalidation ────────────────────────────────────────────────
+  // Session tokens are stateless JWTs, so we cannot delete them server-side.
+  // Instead each token carries the epoch it was minted under; bumping this
+  // number invalidates every token issued before it. That is how a password
+  // change and "sign out everywhere" revoke live sessions.
+  sessionEpoch      Int       @default(0) @map("session_epoch")
+  passwordChangedAt DateTime? @map("password_changed_at")
+
+  activityLogs         ActivityLog[]
+  automationRules      AutomationRule[]     @relation("AutomationRuleCreatedBy")
+  assignedTasks        Task[]               @relation("TaskAssignedTo")
+  comments             TaskComment[]
+  createdDependencies  TaskDependency[]     @relation("TaskDependencyCreatedBy")
+  createdMilestones    Milestone[]          @relation("MilestoneCreatedBy")
+  createdOrganizations Organization[]       @relation("OrganizationCreatedBy")
+  createdProjects      Project[]            @relation("ProjectCreatedBy")
+  createdTasks         Task[]               @relation("TaskCreatedBy")
+  memberships          OrganizationMember[]
+  notifications        Notification[]       @relation("NotificationRecipient")
+  notificationPreferences NotificationPreference[] @relation("NotificationPreferenceUser")
+  savedViews           SavedView[]          @relation("SavedViewOwner")
+  loginAttempts        LoginAttempt[]       @relation("LoginAttemptUser")
+
+  @@map("users")
+}
+
+/// Outcome of a single sign-in attempt.
+///
+/// UNKNOWN_EMAIL is recorded without a userId, which is what makes the log
+/// useful for spotting credential-stuffing sweeps across many addresses.
+enum LoginOutcome {
+  SUCCESS
+  INVALID_PASSWORD
+  UNKNOWN_EMAIL
+  LOCKED
+
+  @@map("login_outcome")
+}
+
+/// Append-only record of sign-in attempts, for incident forensics.
+///
+/// Privacy notes:
+/// - The client IP is stored as a salted hash, never in the clear. That is
+///   enough to group attempts from one source without retaining a personal
+///   identifier we do not need.
+/// - This table is intentionally NOT tenant-scoped: a sign-in happens before
+///   any organization is selected, so there is no tenant to scope it to. It is
+///   therefore never exposed through the tenant-guarded API surface, and the
+///   search layer does not index it.
+model LoginAttempt {
+  id        String       @id @default(cuid())
+  email     String       @db.VarChar(320)
+  userId    String?      @map("user_id")
+  outcome   LoginOutcome
+  ipHash    String?      @map("ip_hash") @db.VarChar(64)
+  userAgent String?      @map("user_agent") @db.VarChar(400)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user User? @relation("LoginAttemptUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("login_attempts")
+}
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String   @db.VarChar(140)
+  slug            String   @unique @db.VarChar(160)
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  activityLogs    ActivityLog[]
+  automationRules AutomationRule[]
+  automationRuns  AutomationRun[]
+  comments        TaskComment[]
+  createdBy       User                 @relation("OrganizationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  dependencies    TaskDependency[]
+  members         OrganizationMember[]
+  milestones      Milestone[]
+  notifications   Notification[]
+  notificationPreferences NotificationPreference[]
+  projects        Project[]
+  savedViews      SavedView[]
+  tasks           Task[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  role           MembershipRole   @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activityLogs        ActivityLog[]    @relation("ActivityLogActorMember")
+  automationRules     AutomationRule[] @relation("AutomationRuleCreatedByMember")
+  assignedTasks       Task[]           @relation("TaskAssignedMember")
+  comments            TaskComment[]    @relation("TaskCommentAuthorMember")
+  createdDependencies TaskDependency[] @relation("TaskDependencyCreatedByMember")
+  createdMilestones   Milestone[]      @relation("MilestoneCreatedByMember")
+  createdProjects     Project[]        @relation("ProjectCreatedByMember")
+  createdTasks        Task[]           @relation("TaskCreatedByMember")
+  notifications       Notification[]   @relation("NotificationRecipientMember")
+  notificationPreferences NotificationPreference[] @relation("NotificationPreferenceMember")
+  savedViews          SavedView[]      @relation("SavedViewOwnerMember")
+
+  @@unique([organizationId, userId])
+  @@unique([userId, organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, status])
+  @@map("organization_members")
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  organizationId  String        @map("organization_id")
+  name            String        @db.VarChar(160)
+  description     String?
+  startDate       DateTime?     @map("start_date")
+  endDate         DateTime?     @map("end_date")
+  status          ProjectStatus @default(ACTIVE)
+  createdByUserId String        @map("created_by_user_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  /// Last health band observed by the automation runner, so
+  /// PROJECT_HEALTH_CHANGED can fire on a real transition rather than against a
+  /// constant. NULL means "never evaluated", which is deliberately distinct from
+  /// "was Healthy": the first observation seeds the baseline without raising an
+  /// event, so enabling a rule cannot alert on history the system never saw.
+  lastHealthBand  String?       @map("last_health_band")
+  lastHealthScore Int?          @map("last_health_score")
+  lastHealthAt    DateTime?     @map("last_health_at")
+
+  createdBy    User         @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByMember OrganizationMember @relation("ProjectCreatedByMember", fields: [createdByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  // No `dependencies` back-relation: edges are tenant-scoped, not project-scoped,
+  // so a project reaches them through its tasks. See the TaskDependency comment.
+  milestones   Milestone[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  savedViews   SavedView[]
+  tasks        Task[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@map("projects")
+}
+
+model Task {
+  id               String       @id @default(cuid())
+  organizationId   String       @map("organization_id")
+  projectId        String       @map("project_id")
+  milestoneId      String?      @map("milestone_id")
+  parentTaskId     String?      @map("parent_task_id")
+  title            String       @db.VarChar(180)
+  description      String?
+  status           TaskStatus   @default(TODO)
+  priority         TaskPriority @default(MEDIUM)
+  rating           Int?
+  completedAt      DateTime?    @map("completed_at")
+  assignedToUserId String?      @map("assigned_to_user_id")
+  createdByUserId  String       @map("created_by_user_id")
+  dueDate          DateTime?    @map("due_date")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  assignedTo   User?         @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedToMember OrganizationMember? @relation("TaskAssignedMember", fields: [assignedToUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  blockedBy    TaskDependency[] @relation("TaskDependencyTarget")
+  blocking     TaskDependency[] @relation("TaskDependencySource")
+  comments     TaskComment[]
+  createdBy    User          @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByMember OrganizationMember @relation("TaskCreatedByMember", fields: [createdByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  milestone    Milestone?    @relation(fields: [milestoneId, organizationId], references: [id, organizationId], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  parentTask   Task?         @relation("TaskSubtasks", fields: [parentTaskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  subtasks     Task[]        @relation("TaskSubtasks")
+
+  @@unique([id, organizationId])
+  @@index([organizationId, projectId])
+  @@index([organizationId, milestoneId])
+  @@index([organizationId, parentTaskId])
+  @@index([organizationId, assignedToUserId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, createdAt])
+  @@map("tasks")
+}
+
+model Milestone {
+  id              String          @id @default(cuid())
+  organizationId  String          @map("organization_id")
+  projectId       String          @map("project_id")
+  name            String          @db.VarChar(160)
+  description     String?
+  dueDate         DateTime        @map("due_date")
+  status          MilestoneStatus @default(PLANNED)
+  createdByUserId String          @map("created_by_user_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  createdBy       User               @relation("MilestoneCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByMember OrganizationMember @relation("MilestoneCreatedByMember", fields: [createdByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project         Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  tasks           Task[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, projectId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@map("milestones")
+}
+
+/// A blocking/relation edge between two tasks.
+///
+/// Deliberately has NO `projectId`. An edge belongs to the *tenant*, not to a
+/// project, so a task in one project can block a task in another — which is how
+/// real programmes of work behave (a platform task gating a product launch).
+///
+/// Consequences worth knowing before querying this table:
+///
+///  - "This project's dependencies" is no longer a column filter. An edge is
+///    relevant to a project if EITHER endpoint lives in it, so queries must use
+///    `{ OR: [{ sourceTask: { projectId } }, { targetTask: { projectId } }] }`.
+///    Filtering on one side only silently hides inbound edges from other
+///    projects, which is exactly the blindness this change is meant to remove.
+///  - Cycle detection must be tenant-wide. A chain can now leave a project and
+///    come back, so a per-project check would miss the loop.
+///
+/// Tenant isolation is unaffected: `organizationId` is still on the row, still
+/// part of both task foreign keys, and both endpoints are therefore forced into
+/// the same organization by the database itself. Cross-*project* is allowed;
+/// cross-*tenant* remains structurally impossible.
+model TaskDependency {
+  id              String         @id @default(cuid())
+  organizationId  String         @map("organization_id")
+  sourceTaskId    String         @map("source_task_id")
+  targetTaskId    String         @map("target_task_id")
+  type            DependencyType @default(BLOCKS)
+  createdByUserId String         @map("created_by_user_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  createdBy       User               @relation("TaskDependencyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByMember OrganizationMember @relation("TaskDependencyCreatedByMember", fields: [createdByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceTask      Task               @relation("TaskDependencySource", fields: [sourceTaskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  targetTask      Task               @relation("TaskDependencyTarget", fields: [targetTaskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([organizationId, sourceTaskId, targetTaskId, type])
+  @@index([organizationId, sourceTaskId])
+  @@index([organizationId, targetTaskId])
+  @@map("task_dependencies")
+}
+
+model TaskComment {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  taskId         String   @map("task_id")
+  authorUserId   String   @map("author_user_id")
+  body           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  author       User         @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorMember OrganizationMember @relation("TaskCommentAuthorMember", fields: [authorUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, taskId])
+  @@index([organizationId, createdAt])
+  @@map("task_comments")
+}
+
+model ActivityLog {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  actorUserId    String   @map("actor_user_id")
+  entityType     String   @map("entity_type") @db.VarChar(80)
+  entityId       String   @map("entity_id")
+  action         String   @db.VarChar(120)
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  actor       User         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorMember OrganizationMember @relation("ActivityLogActorMember", fields: [actorUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id              String       @id @default(cuid())
+  organizationId  String       @map("organization_id")
+  recipientUserId String       @map("recipient_user_id")
+  type            String       @default("general") @db.VarChar(80)
+  title           String       @db.VarChar(180)
+  body            String
+  priority        TaskPriority @default(MEDIUM)
+  href            String       @db.VarChar(400)
+  dedupeKey       String?      @map("dedupe_key") @db.VarChar(200)
+  readAt          DateTime?    @map("read_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient       User               @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  recipientMember OrganizationMember @relation("NotificationRecipientMember", fields: [recipientUserId, organizationId], references: [userId, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, recipientUserId, readAt])
+  @@index([organizationId, recipientUserId, type])
+  @@index([organizationId, createdAt])
+  @@map("notifications")
+}
+
+model AutomationRule {
+  id              String            @id @default(cuid())
+  organizationId  String            @map("organization_id")
+  name            String            @db.VarChar(160)
+  description     String?
+  enabled         Boolean           @default(true)
+  trigger         AutomationTrigger
+  condition       String            @db.VarChar(500)
+  action          AutomationAction
+  runsThisMonth   Int               @default(0) @map("runs_this_month")
+  lastRunAt       DateTime?         @map("last_run_at")
+  createdByUserId String            @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  createdBy       User               @relation("AutomationRuleCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByMember OrganizationMember @relation("AutomationRuleCreatedByMember", fields: [createdByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs            AutomationRun[]
+
+  @@index([organizationId, enabled])
+  @@index([organizationId, trigger])
+  @@map("automation_rules")
+}
+
+model AutomationRun {
+  id             String              @id @default(cuid())
+  organizationId String              @map("organization_id")
+  ruleId         String              @map("rule_id")
+  dedupeKey      String              @map("dedupe_key") @db.VarChar(200)
+  status         AutomationRunStatus
+  detail         String?
+  entityType     String?             @map("entity_type") @db.VarChar(80)
+  entityId       String?             @map("entity_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule         AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, ruleId, dedupeKey])
+  @@index([organizationId, ruleId])
+  @@index([organizationId, createdAt])
+  @@map("automation_runs")
+}
+
+model NotificationPreference {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  inAppEnabled   Boolean  @default(true) @map("in_app_enabled")
+  emailEnabled   Boolean  @default(false) @map("email_enabled")
+  mutedTypes     String[] @map("muted_types")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User               @relation("NotificationPreferenceUser", fields: [userId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation("NotificationPreferenceMember", fields: [userId, organizationId], references: [userId, organizationId], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("notification_preferences")
+}
+
+model SavedView {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  projectId      String?  @map("project_id")
+  ownerUserId    String   @map("owner_user_id")
+  name           String   @db.VarChar(160)
+  viewType       ViewType @default(BOARD) @map("view_type")
+  config         Json
+  isShared       Boolean  @default(false) @map("is_shared")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User               @relation("SavedViewOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerMember  OrganizationMember @relation("SavedViewOwnerMember", fields: [ownerUserId, organizationId], references: [userId, organizationId], onDelete: Cascade)
+  project      Project?           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, projectId])
+  @@index([organizationId, ownerUserId])
+  @@index([organizationId, isShared])
+  @@map("saved_views")
+}
