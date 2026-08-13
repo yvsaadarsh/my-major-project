@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Sparkles,
   Timer,
+  TrendingUp,
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -211,6 +212,30 @@ function BriefSkeleton() {
   );
 }
 
+/**
+ * Lifecycle of the trajectory forecast.
+ *
+ * `insufficient` is distinct from `hidden`: the project is real but too young or
+ * too small to forecast, which the user should be told plainly rather than left
+ * wondering why the section is empty. `hidden` still covers every failure and
+ * the not-configured (501) case, so a missing key degrades to nothing at all.
+ */
+type ForecastState = "loading" | "streaming" | "done" | "insufficient" | "hidden";
+
+/** Animated gradient bars, standing in for the two sentences while they stream. */
+function TrajectorySkeleton() {
+  return (
+    <div className="space-y-2.5" aria-hidden>
+      {["w-full", "w-5/6"].map((width) => (
+        <div
+          key={width}
+          className={`h-3.5 animate-pulse rounded-full bg-gradient-to-r from-sky-400/25 via-violet-400/20 to-sky-400/10 ${width}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function ProjectIntelligencePage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params?.projectId;
@@ -230,6 +255,9 @@ export default function ProjectIntelligencePage() {
   const [briefState, setBriefState] = useState<BriefState>("loading");
   /** Bumped by Refresh so the brief re-streams alongside the deterministic data. */
   const [refreshToken, setRefreshToken] = useState(0);
+
+  const [forecast, setForecast] = useState("");
+  const [forecastState, setForecastState] = useState<ForecastState>("loading");
 
   async function load() {
     if (!projectId) {
@@ -317,6 +345,74 @@ export default function ProjectIntelligencePage() {
         // Includes the abort below, where the component no longer exists and the
         // state setter is a no-op.
         setBriefState("hidden");
+      }
+    })();
+
+    return () => controller.abort();
+  }, [projectId, refreshToken]);
+
+  /**
+   * Stream the trajectory forecast.
+   *
+   * Independent of both `load()` and the brief: three concurrent requests, none
+   * able to block or fail another. The forecast response is either a `text/plain`
+   * token stream (success) or a small `application/json` body (`insufficient`, or
+   * a 501 the branch below treats as `hidden`), so the content type decides how
+   * to read it.
+   */
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void (async () => {
+      setForecast("");
+      setForecastState("loading");
+
+      try {
+        const response = await fetch(
+          `/api/v1/intelligence/projects/${projectId}/forecast`,
+          { cache: "no-store", credentials: "include", signal: controller.signal },
+        );
+
+        // 501 (no key) and every other failure collapse to the same outcome: the
+        // section is not rendered.
+        if (!response.ok || !response.body) {
+          setForecastState("hidden");
+          return;
+        }
+
+        // A JSON body is the "not enough history" signal, never a stream.
+        if ((response.headers.get("content-type") ?? "").includes("application/json")) {
+          const payload = (await response.json().catch(() => null)) as
+            | { insufficient?: boolean }
+            | null;
+          setForecastState(payload?.insufficient ? "insufficient" : "hidden");
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        setForecastState("streaming");
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          accumulated += decoder.decode(value, { stream: true });
+          setForecast(accumulated);
+        }
+
+        accumulated += decoder.decode();
+        setForecast(accumulated);
+        setForecastState(accumulated.trim().length > 0 ? "done" : "hidden");
+      } catch {
+        setForecastState("hidden");
       }
     })();
 
@@ -455,6 +551,60 @@ export default function ProjectIntelligencePage() {
               </div>
             </SectionCard>
           </div>
+
+          {/* ── Trajectory ────────────────────────────────────────────────── */}
+          {/*
+            Forward-looking, additive, and clearly labelled as an estimate. It
+            streams two hedged sentences from the computed velocity and slippage
+            trends. Hidden entirely when AI is not configured (501) or on any
+            failure; a distinct "not enough history" line when the project is too
+            new or too small to project from.
+          */}
+          {forecastState !== "hidden" && (
+            <div className="mt-6">
+              <SectionCard>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="flex items-center gap-2 text-xl font-semibold text-white">
+                    <TrendingUp className="text-sky-300" size={20} aria-hidden />
+                    Trajectory
+                  </h2>
+                  <span
+                    className="inline-flex cursor-help items-center gap-1.5 rounded-full border border-sky-300/30 bg-sky-300/[0.1] px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-sky-200"
+                    title="This is a probabilistic estimate based on current velocity and slippage trends, not a guarantee."
+                  >
+                    AI
+                  </span>
+                </div>
+
+                <p className="mt-1 text-sm text-slate-400">
+                  Where this project is heading if current trends hold.
+                </p>
+
+                <div
+                  className="mt-4"
+                  aria-busy={forecastState === "loading" || forecastState === "streaming"}
+                  aria-live="polite"
+                >
+                  {forecastState === "insufficient" ? (
+                    <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
+                      Not enough history yet.
+                    </p>
+                  ) : forecast.length === 0 ? (
+                    <TrajectorySkeleton />
+                  ) : (
+                    <p className="text-sm leading-7 text-slate-200">{forecast}</p>
+                  )}
+                </div>
+
+                {forecastState === "streaming" && forecast.length > 0 && (
+                  <p className="mt-3 flex items-center gap-2 text-xs text-sky-200/70">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300" />
+                    Projecting…
+                  </p>
+                )}
+              </SectionCard>
+            </div>
+          )}
 
           {/* ── AI brief ──────────────────────────────────────────────────── */}
           {/*
