@@ -18,7 +18,7 @@ import { normalizeText, type ParsedQuery } from "@/lib/domain/search";
  * A closed union rather than a callback, so the palette resolves actions through
  * a `switch` and can never be handed an arbitrary function to execute.
  */
-export type CommandAction = "signOut" | "copyLink";
+export type CommandAction = "signOut" | "copyLink" | "createTaskAI";
 
 export type CommandGroupName = "Navigate" | "Create" | "Workspace" | "Account";
 
@@ -56,6 +56,7 @@ export type CommandIconName =
   | "members"
   | "search"
   | "plus"
+  | "sparkles"
   | "signout"
   | "link";
 
@@ -164,6 +165,15 @@ export const PALETTE_COMMANDS: PaletteCommand[] = [
     keywords: ["new task", "add task", "add work", "ticket", "issue"],
     label: "New task",
     href: "/projects?new=task",
+    permission: "tasks:create",
+  },
+  {
+    group: "Create",
+    icon: "sparkles",
+    id: "create.task.ai",
+    keywords: ["ai task", "describe task", "natural language", "smart add", "quick add", "parse task"],
+    label: "Create task with AI",
+    action: "createTaskAI",
     permission: "tasks:create",
   },
   {

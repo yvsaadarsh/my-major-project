@@ -76,6 +76,9 @@ export default function ProjectsPage() {
   const [viewType, setViewType] = useState<ViewType>("BOARD");
   const [viewConfig, setViewConfig] = useState<ViewConfig>(DEFAULT_VIEW_CONFIG);
   const [hydratedProjectId, setHydratedProjectId] = useState<string | null>(null);
+  // A project id handed over from the "Create task with AI → Edit first" flow,
+  // applied once its project has loaded.
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null,
@@ -183,6 +186,42 @@ export default function ProjectsPage() {
       });
     }
   }, [organization]);
+
+  // One-time hand-off from the command center's "Create task with AI → Edit
+  // first". Reads the draft off the URL (client-only, so no Suspense boundary is
+  // needed) and pre-fills the standard create-task form.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") !== "task") {
+      return;
+    }
+
+    const title = params.get("title");
+    const projectId = params.get("projectId");
+
+    queueMicrotask(() => {
+      if (title) {
+        setTaskTitle(title);
+      }
+      if (projectId) {
+        setPendingProjectId(projectId);
+      }
+    });
+  }, []);
+
+  // Apply the handed-over project once it appears in the loaded list; loadWorkspace
+  // otherwise defaults selection to the newest project.
+  useEffect(() => {
+    if (!pendingProjectId) {
+      return;
+    }
+    if (projects.some((project) => project.id === pendingProjectId)) {
+      queueMicrotask(() => {
+        setSelectedProjectId(pendingProjectId);
+        setPendingProjectId(null);
+      });
+    }
+  }, [pendingProjectId, projects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
