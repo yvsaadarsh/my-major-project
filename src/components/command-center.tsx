@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 
+import { Highlighted } from "@/components/highlighted-text";
 import { apiRequest } from "@/lib/ui/api-client";
 import {
   groupCommands,
@@ -39,7 +40,6 @@ import {
 } from "@/lib/ui/commands";
 import {
   parseSearchQuery,
-  splitHighlighted,
   type SearchEntityType,
   type SearchGroup,
   type SearchResult,
@@ -913,37 +913,6 @@ function PaletteRowView({
         {result.context}
       </span>
     </button>
-  );
-}
-
-/**
- * Render matched ranges as marked spans. Uses the domain layer's segment split
- * rather than `dangerouslySetInnerHTML`, so user content can never inject markup.
- */
-function Highlighted({
-  highlights,
-  text,
-}: {
-  highlights: Array<{ start: number; end: number }>;
-  text: string;
-}) {
-  const parts = splitHighlighted(text, highlights);
-
-  return (
-    <>
-      {parts.map((part, index) =>
-        part.match ? (
-          <mark
-            className="rounded bg-teal-300/20 px-0.5 text-teal-100"
-            key={`${index}-${part.text}`}
-          >
-            {part.text}
-          </mark>
-        ) : (
-          <span key={`${index}-${part.text}`}>{part.text}</span>
-        ),
-      )}
-    </>
   );
 }
 

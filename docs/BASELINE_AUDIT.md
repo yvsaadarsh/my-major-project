@@ -65,7 +65,7 @@ These are real and tracked for later roadmap phases — see `docs/ROADMAP.md`.
   modeled but there is no worker/queue to execute them on a schedule.
 - **No object storage / attachments** despite the domain implying documents.
 - **Client data-fetching is ad hoc** (`src/lib/ui/api-client.ts`) with no shared
-  cache/invalidation strategy; some pages rely on `demo-data.ts` fallbacks.
+  cache/invalidation strategy.
 - **RBAC is role-fixed** (ADMIN/MANAGER/MEMBER). Custom roles / project-level
   roles / guests are not yet supported.
 - **Observability** is `console.error` only — no structured logs, request IDs, or

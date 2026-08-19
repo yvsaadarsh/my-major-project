@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { Highlighted } from "@/components/highlighted-text";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
@@ -23,7 +24,6 @@ import {
   entityLabel,
   parseSearchQuery,
   SEARCH_ENTITY_TYPES,
-  splitHighlighted,
   type SearchEntityType,
   type SearchGroup,
   type SearchResult,
@@ -339,30 +339,3 @@ export default function SearchPage() {
   );
 }
 
-/** Marked spans built from domain-computed ranges — no HTML injection. */
-function Highlighted({
-  highlights,
-  text,
-}: {
-  highlights: Array<{ start: number; end: number }>;
-  text: string;
-}) {
-  const parts = splitHighlighted(text, highlights);
-
-  return (
-    <>
-      {parts.map((part, index) =>
-        part.match ? (
-          <mark
-            className="rounded bg-teal-300/20 px-0.5 text-teal-100"
-            key={`${index}-${part.text}`}
-          >
-            {part.text}
-          </mark>
-        ) : (
-          <span key={`${index}-${part.text}`}>{part.text}</span>
-        ),
-      )}
-    </>
-  );
-}

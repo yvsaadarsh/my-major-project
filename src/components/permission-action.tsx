@@ -6,7 +6,6 @@ type PermissionActionProps = {
   children: React.ReactNode;
   permission: Permission;
   role: Role;
-  lockedLabel?: string;
   variant?: "primary" | "secondary" | "danger";
   onClick?: () => void;
   type?: "button" | "submit" | "reset";
@@ -23,7 +22,6 @@ export function PermissionAction({
   children,
   permission,
   role,
-  lockedLabel = "Restricted for this role",
   variant = "primary",
   onClick,
   type = "button",

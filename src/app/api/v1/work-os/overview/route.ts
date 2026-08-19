@@ -251,8 +251,5 @@ export const GET = withTenantGuard(Permission.DashboardRead, async (_request, te
       progress: milestoneCompletion(milestone, tasks),
     })),
     notifications,
-    riskyTasks: tasks
-      .filter((task) => task.status === "BLOCKED" || task.priority === "URGENT")
-      .slice(0, 10),
   });
 });
