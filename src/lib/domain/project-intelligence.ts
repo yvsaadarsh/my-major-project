@@ -900,56 +900,6 @@ export function analyzeProjectHealth(
 }
 
 // ---------------------------------------------------------------------------
-// Legacy projection (migration shim)
-// ---------------------------------------------------------------------------
-
-/**
- * The shape the removed `calculateProjectHealth` returned.
- *
- * Kept only so the existing Work OS and Analytics pages keep rendering while
- * they migrate to the full `ProjectIntelligence` output. There is still exactly
- * one scoring engine — this is a projection of its result, not a second
- * implementation, so the two can never disagree.
- *
- * Removal path: once `/work-os` and `/analytics` read `factors` and
- * `confidence` directly (as `/intelligence` already does), delete this function
- * and the `health` key in the three routes that call it.
- */
-export type LegacyProjectHealth = {
-  blockedTasks: number;
-  completion: number;
-  milestoneRisk: number;
-  overdueTasks: number;
-  reasons: string[];
-  score: number;
-  status: HealthBand;
-};
-
-export function legacyHealthView(analysis: ProjectIntelligence): LegacyProjectHealth {
-  const milestoneSignal = [...analysis.factors, ...analysis.healthy].find(
-    (signal) => signal.key === "milestone",
-  );
-
-  return {
-    blockedTasks: analysis.counts.blocked,
-    completion: analysis.completion,
-    // The old field was a percentage of milestones at risk. Recover it from the
-    // signal's ratio so there is a single definition of the number.
-    milestoneRisk: Math.round((milestoneSignal?.ratio ?? 0) * 100),
-    overdueTasks: analysis.counts.overdue,
-    // The old array always had four entries including non-reasons like "No
-    // overdue open tasks". Now only things that actually cost points appear, so
-    // a healthy project shows one positive line instead of four filler ones.
-    reasons:
-      analysis.factors.length > 0
-        ? analysis.factors.map((factor) => factor.detail)
-        : ["No health signals are currently costing points."],
-    score: analysis.score,
-    status: analysis.band,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Portfolio
 // ---------------------------------------------------------------------------
 

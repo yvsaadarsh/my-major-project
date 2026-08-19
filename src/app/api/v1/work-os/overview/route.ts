@@ -8,7 +8,6 @@ import {
 import {
   analyzeProjectHealth,
   blockerIdsFrom,
-  legacyHealthView,
   scheduleChangesFromActivity,
 } from "@/lib/domain/project-intelligence";
 import { edgesForProject, flattenDependencies } from "@/lib/dependencies/scope";
@@ -217,9 +216,6 @@ export const GET = withTenantGuard(Permission.DashboardRead, async (_request, te
 
     return {
       ...project,
-      // Legacy projection keeps the current Work OS page rendering unchanged
-      // while it migrates to `intelligence` below. Same engine, one number.
-      health: legacyHealthView(analysis),
       intelligence: analysis,
     };
   });

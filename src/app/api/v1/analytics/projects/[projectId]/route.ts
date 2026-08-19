@@ -17,7 +17,6 @@ import {
 import {
   analyzeProjectHealth,
   blockerIdsFrom,
-  legacyHealthView,
   scheduleChangesFromActivity,
 } from "@/lib/domain/project-intelligence";
 import {
@@ -127,7 +126,6 @@ export const GET = withTenantGuard<{ projectId: string }>(
     return json({
       generatedAt: now.toISOString(),
       project: { id: project.id, name: project.name, status: project.status },
-      health: legacyHealthView(projectAnalysis),
       intelligence: projectAnalysis,
       metrics: workMetrics(analyticsTasks, now),
       statusDistribution: statusDistribution(analyticsTasks),

@@ -10,21 +10,15 @@
  */
 
 import type { AutomationRule as SharedAutomationRule } from "@/lib/ui/api-client";
+import type { ApiProjectIntelligence, Band } from "@/lib/ui/intelligence-types";
 
 export type HealthProject = {
   id: string;
   name: string;
   status: string;
   _count: { tasks: number };
-  health: {
-    blockedTasks: number;
-    completion: number;
-    milestoneRisk: number;
-    overdueTasks: number;
-    reasons: string[];
-    score: number;
-    status: "Healthy" | "Watch" | "At risk" | "Critical";
-  };
+  /** The full analysis. Band, score, ranked factors and confidence all live here. */
+  intelligence: ApiProjectIntelligence;
 };
 
 export type Milestone = {
@@ -103,13 +97,13 @@ export type Overview = {
   notifications: NotificationItem[];
 };
 
-export function healthColor(status: HealthProject["health"]["status"]) {
+export function healthColor(band: Band) {
   return {
     "At risk": "border-amber-300/30 bg-amber-300/10 text-amber-100",
     Critical: "border-red-300/30 bg-red-400/10 text-red-100",
     Healthy: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
     Watch: "border-blue-300/30 bg-blue-300/10 text-blue-100",
-  }[status];
+  }[band];
 }
 
 export function shortDate(value?: string | null) {

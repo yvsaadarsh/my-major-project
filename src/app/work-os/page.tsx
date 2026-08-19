@@ -44,7 +44,10 @@ export default function WorkOsPage() {
   const [automationAction, setAutomationAction] = useState("NOTIFY_MANAGER");
 
   const topHealth = useMemo(
-    () => overview?.health.slice().sort((a, b) => a.health.score - b.health.score) ?? [],
+    () =>
+      overview?.health
+        .slice()
+        .sort((a, b) => a.intelligence.score - b.intelligence.score) ?? [],
     [overview],
   );
 

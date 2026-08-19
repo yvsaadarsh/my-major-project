@@ -20,6 +20,7 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
+import type { ApiProjectIntelligence, Band } from "@/lib/ui/intelligence-types";
 
 type WorkMetrics = {
   totalTasks: number;
@@ -106,15 +107,8 @@ type ProjectHealthRow = {
   name: string;
   status: string;
   taskCount: number;
-  health: {
-    blockedTasks: number;
-    completion: number;
-    milestoneRisk: number;
-    overdueTasks: number;
-    reasons: string[];
-    score: number;
-    status: "Healthy" | "Watch" | "At risk" | "Critical";
-  };
+  /** The full analysis — band, score, ranked factors, confidence. */
+  intelligence: ApiProjectIntelligence;
 };
 
 type AnalyticsOverview = {
@@ -131,7 +125,7 @@ type AnalyticsOverview = {
   projectHealth: ProjectHealthRow[];
 };
 
-const HEALTH_STYLES: Record<ProjectHealthRow["health"]["status"], string> = {
+const HEALTH_STYLES: Record<Band, string> = {
   Healthy: "border-emerald-300/30 bg-emerald-300/10 text-emerald-200",
   Watch: "border-sky-300/30 bg-sky-300/10 text-sky-200",
   "At risk": "border-amber-300/30 bg-amber-300/10 text-amber-100",
@@ -339,32 +333,44 @@ export default function AnalyticsPage() {
               {data.projectHealth.length === 0 ? (
                 <p className="text-sm text-slate-500">No projects yet.</p>
               ) : (
-                data.projectHealth.map((project) => (
-                  <div key={project.id} className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${HEALTH_STYLES[project.health.status]}`}>
-                          {project.health.status} · {project.health.score}
-                        </span>
-                        <Link href="/projects" className="text-base font-semibold text-white hover:text-teal-200">
-                          {project.name}
-                        </Link>
+                data.projectHealth.map((project) => {
+                  const intel = project.intelligence;
+
+                  return (
+                    <div key={project.id} className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${HEALTH_STYLES[intel.band]}`}>
+                            {intel.band} · {intel.score}
+                          </span>
+                          <Link href={`/intelligence/${project.id}`} className="text-base font-semibold text-white hover:text-teal-200">
+                            {project.name}
+                          </Link>
+                        </div>
+                        <div className="flex gap-4 text-xs text-slate-400">
+                          <span>{intel.completion}% done</span>
+                          <span>{intel.counts.overdue} overdue</span>
+                          <span>{intel.counts.blocked} blocked</span>
+                          <span className="text-slate-500">{intel.confidence.level} confidence</span>
+                        </div>
                       </div>
-                      <div className="flex gap-4 text-xs text-slate-400">
-                        <span>{project.health.completion}% done</span>
-                        <span>{project.health.overdueTasks} overdue</span>
-                        <span>{project.health.blockedTasks} blocked</span>
-                      </div>
+                      <ul className="mt-3 flex flex-wrap gap-2">
+                        {intel.factors.length ? (
+                          intel.factors.map((factor) => (
+                            <li key={factor.key} className="rounded-full bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
+                              <span className="font-semibold text-slate-300">−{factor.points}</span>{" "}
+                              {factor.detail}
+                            </li>
+                          ))
+                        ) : (
+                          <li className="rounded-full bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
+                            No health signals are currently costing points.
+                          </li>
+                        )}
+                      </ul>
                     </div>
-                    <ul className="mt-3 flex flex-wrap gap-2">
-                      {project.health.reasons.map((reason) => (
-                        <li key={reason} className="rounded-full bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
-                          {reason}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </SectionCard>

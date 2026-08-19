@@ -17,7 +17,6 @@ import {
 import {
   analyzeProjectHealth,
   blockerIdsFrom,
-  legacyHealthView,
   scheduleChangesFromActivity,
 } from "@/lib/domain/project-intelligence";
 import {
@@ -142,11 +141,10 @@ export const GET = withTenantGuard(Permission.DashboardRead, async (_request, te
         name: project.name,
         status: project.status,
         taskCount: project._count.tasks,
-        health: legacyHealthView(analysis),
         intelligence: analysis,
       };
     })
-    .sort((a, b) => a.health.score - b.health.score); // most at-risk first
+    .sort((a, b) => a.intelligence.score - b.intelligence.score); // most at-risk first
 
   return json({
     generatedAt: now.toISOString(),

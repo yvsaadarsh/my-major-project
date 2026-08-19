@@ -41,8 +41,8 @@ type DependencyLike = {
  *    overdue open tasks"), so it could not answer "why is this score low".
  *
  * The replacement also adds velocity, schedule slippage and a confidence signal.
- * Callers needing the old response shape use `legacyHealthView`, which is a
- * projection of the new engine's result rather than a second implementation.
+ * Every caller now reads `analyzeProjectHealth`'s full result directly; the
+ * `legacyHealthView` projection that briefly bridged the two is gone.
  */
 
 export type WorkloadBucket = {
