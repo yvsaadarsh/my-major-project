@@ -90,7 +90,7 @@ export function buildRecommendations(
       case "slippage":
         recommendations.push(
           context.slippage.blockerPushCount > 0
-            ? `${plural(context.slippage.blockerPushCount, "due-date push")} landed on blocking tasks. Re-plan those first, since their dates drag everything downstream.`
+            ? `${plural(context.slippage.blockerPushCount, "due-date push", "due-date pushes")} landed on blocking tasks. Re-plan those first, since their dates drag everything downstream.`
             : `Due dates have moved by ${plural(Math.round(context.slippage.totalDaysPushed), "day")} in total. Consider whether the current dates are still credible.`,
         );
         break;

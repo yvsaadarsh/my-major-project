@@ -10,7 +10,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:domain": "node --experimental-strip-types scripts/test-auth-policy.ts && node --experimental-strip-types scripts/test-security-headers.ts && node --experimental-strip-types scripts/test-intelligence.ts",
+    "test:domain": "node --experimental-strip-types scripts/test-auth-policy.ts && node --experimental-strip-types scripts/test-security-headers.ts && node --experimental-strip-types scripts/test-intelligence.ts && node --experimental-strip-types scripts/test-narrative.ts && node --experimental-strip-types scripts/test-parse-helpers.ts",
     "test:ai": "tsx --tsconfig tsconfig.test.json scripts/test-ai-routes.ts",
     "test": "npm run test:domain && npm run test:ai",
     "db:generate": "prisma generate",

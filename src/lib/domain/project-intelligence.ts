@@ -719,11 +719,11 @@ export function analyzeProjectHealth(
       detail = "No due date has been pushed later.";
     } else {
       detail =
-        `${plural(slippage.pushCount, "due-date push")} across ${plural(slippage.tasksPushed, "task")}, ` +
+        `${plural(slippage.pushCount, "due-date push", "due-date pushes")} across ${plural(slippage.tasksPushed, "task")}, ` +
         `adding ${plural(Math.round(slippage.totalDaysPushed), "day")} in total ` +
         `(worst single slip ${plural(Math.round(slippage.worstPushDays), "day")})` +
         (slippage.blockerPushCount > 0
-          ? `. ${plural(slippage.blockerPushCount, "push")} landed on tasks that block other work, so the delay propagated.`
+          ? `. ${plural(slippage.blockerPushCount, "push", "pushes")} landed on tasks that block other work, so the delay propagated.`
           : ".");
     }
 
