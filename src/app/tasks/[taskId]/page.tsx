@@ -9,7 +9,9 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { PermissionAction } from "@/components/permission-action";
 import { SectionCard } from "@/components/section-card";
 import { ActivityPanel } from "@/components/tasks/activity-panel";
+import { AssignTaskDialog } from "@/components/tasks/assign-task-dialog";
 import { CommentsPanel } from "@/components/tasks/comments-panel";
+import { EditTaskDialog } from "@/components/tasks/edit-task-dialog";
 import { SubtasksPanel } from "@/components/tasks/subtasks-panel";
 import { TaskDependenciesPanel } from "@/components/tasks/task-dependencies-panel";
 import { formatStatus } from "@/lib/ui/api-client";
@@ -35,9 +37,17 @@ export default function TaskViewPage() {
     dependencyError,
     loading,
     saving,
+    editOpen,
+    assignOpen,
+    members,
+    membersLoading,
     setComment,
     setSubtaskTitle,
     setDependencyTargetId,
+    closeEdit,
+    closeAssign,
+    submitTitle,
+    submitAssignee,
     markDone,
     editTask,
     assignTask,
@@ -211,6 +221,26 @@ export default function TaskViewPage() {
             <ActivityPanel activity={activity} />
           </div>
         </div>
+      )}
+
+      {editOpen && task && (
+        <EditTaskDialog
+          currentTitle={task.title}
+          onClose={closeEdit}
+          onSubmit={(title) => void submitTitle(title)}
+          saving={saving}
+        />
+      )}
+
+      {assignOpen && task && (
+        <AssignTaskDialog
+          currentAssigneeId={task.assignedTo?.id ?? task.assignedToUserId ?? null}
+          members={members}
+          membersLoading={membersLoading}
+          onClose={closeAssign}
+          onSubmit={(userId) => void submitAssignee(userId)}
+          saving={saving}
+        />
       )}
     </AppShell>
   );

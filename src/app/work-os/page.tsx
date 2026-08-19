@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Bell,
-  BotOff,
+  Calculator,
   CalendarClock,
   GitBranch,
   Gauge,
@@ -120,7 +120,7 @@ export default function WorkOsPage() {
       organizationName={organization?.name}
       role={role}
       title="Plan, risk, access, and operations in one tenant-safe control room."
-      description="Northstar connects projects, milestones, tasks, dependencies, notifications, automations, and audit history without adding any AI layer."
+      description="Northstar connects projects, milestones, tasks, dependencies, notifications, automations, and audit history in one tenant-scoped view."
     >
       {error && <InlineError message={error} />}
 
@@ -130,9 +130,17 @@ export default function WorkOsPage() {
             <ShieldCheck size={17} />
             Server-enforced tenant scope
           </span>
-          <span className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-slate-300">
-            <BotOff size={17} />
-            Deterministic, non-AI analytics
+          {/*
+            Precise rather than absolute: every number on this page is computed
+            by the domain layer. AI may phrase a notification body, but it never
+            produces a score — see AGENTS.md rules 3 and 6.
+          */}
+          <span
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-slate-300"
+            title="Health scores, workload and dependency impact are computed deterministically. Generated text never sets a number."
+          >
+            <Calculator size={17} />
+            Scores computed, never generated
           </span>
         </div>
         <button

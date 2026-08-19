@@ -10,6 +10,13 @@ type PermissionActionProps = {
   variant?: "primary" | "secondary" | "danger";
   onClick?: () => void;
   type?: "button" | "submit" | "reset";
+  /**
+   * Transient disable — a write already in flight, an empty required field.
+   * Distinct from the permission check: `disabled` is a temporary state for a
+   * user who *may* perform the action, while a missing permission removes the
+   * button entirely.
+   */
+  disabled?: boolean;
 };
 
 export function PermissionAction({
@@ -20,6 +27,7 @@ export function PermissionAction({
   variant = "primary",
   onClick,
   type = "button",
+  disabled = false,
 }: PermissionActionProps) {
   const allowed = can(role, permission);
   const base =
@@ -41,7 +49,12 @@ export function PermissionAction({
   }
 
   return (
-    <button type={type} onClick={onClick} className={`${base} ${variants[variant]}`}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${base} ${variants[variant]} disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none`}
+    >
       {children}
     </button>
   );

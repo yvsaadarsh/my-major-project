@@ -103,7 +103,12 @@ export function AutomationRulesPanel({
             </option>
           ))}
         </select>
-        <PermissionAction permission="automations:manage" role={role} type="submit">
+        <PermissionAction
+          permission="automations:manage"
+          role={role}
+          type="submit"
+          disabled={saving || !name.trim()}
+        >
           <Plus size={16} />
           {saving ? "Saving..." : "Create rule"}
         </PermissionAction>

@@ -51,6 +51,13 @@ export function useTaskWorkspace({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Edit and assign are dialog-driven. The member list is loaded lazily, on
+  // the first open of the assign dialog, and kept for the life of the page.
+  const [editOpen, setEditOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+
   async function loadRelatedData(current: Task) {
     const projectId = current.project?.id;
 
@@ -135,14 +142,21 @@ export function useTaskWorkspace({
     }
   }
 
-  async function editTask() {
+  /** Open the rename dialog. The write happens in `submitTitle`. */
+  function editTask() {
     if (!task || !can(role, "tasks:update")) return;
-    const newTitle = window.prompt("Enter new task title:", task.title);
-    if (!newTitle || newTitle === task.title) return;
+    setEditOpen(true);
+  }
+
+  async function submitTitle(newTitle: string) {
+    if (!task || !can(role, "tasks:update")) return;
 
     setSaving(true);
+    setError(null);
+
     try {
       await apiRequest(`/api/v1/tasks/${task.id}`, { method: "PATCH", body: { title: newTitle } });
+      setEditOpen(false);
       await loadTask();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to edit task.");
@@ -151,27 +165,43 @@ export function useTaskWorkspace({
     }
   }
 
-  async function assignTask() {
+  /**
+   * Open the assignee dialog, fetching the member list on first open.
+   *
+   * The list is cached for the life of the page: it is small, rarely changes
+   * mid-session, and re-fetching it on every open would make the dialog feel
+   * slower for no benefit.
+   */
+  function assignTask() {
     if (!task || !can(role, "tasks:assign")) return;
+
+    setAssignOpen(true);
+
+    if (members.length > 0 || membersLoading) {
+      return;
+    }
+
+    setMembersLoading(true);
+    apiRequest<{ members: Member[] }>("/api/v1/members")
+      .then((response) => setMembers(response.members))
+      .catch((caught) =>
+        setError(caught instanceof Error ? caught.message : "Unable to load members."),
+      )
+      .finally(() => setMembersLoading(false));
+  }
+
+  async function submitAssignee(userId: string | null) {
+    if (!task || !can(role, "tasks:assign")) return;
+
     setSaving(true);
+    setError(null);
+
     try {
-      const { members } = await apiRequest<{ members: Member[] }>("/api/v1/members");
-      const emailList = members.map((m) => m.user.email).join(`\n`);
-      const email = window.prompt(`Enter assignee email:\n${emailList}`);
-      if (!email) return;
-
-      const target = members.find(
-        (m) => m.user.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-      if (!target) {
-        alert("User not found in organization");
-        return;
-      }
-
       await apiRequest(`/api/v1/tasks/${task.id}`, {
         method: "PATCH",
-        body: { assignedToUserId: target.user.id },
+        body: { assignedToUserId: userId },
       });
+      setAssignOpen(false);
       await loadTask();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to assign task.");
@@ -316,9 +346,17 @@ export function useTaskWorkspace({
     dependencyError,
     loading,
     saving,
+    editOpen,
+    assignOpen,
+    members,
+    membersLoading,
     setComment,
     setSubtaskTitle,
     setDependencyTargetId,
+    closeEdit: () => setEditOpen(false),
+    closeAssign: () => setAssignOpen(false),
+    submitTitle,
+    submitAssignee,
     markDone,
     editTask,
     assignTask,
