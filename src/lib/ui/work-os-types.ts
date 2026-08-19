@@ -9,7 +9,13 @@
  * match, the shared type is reused rather than copied.
  */
 
-import type { AutomationRule as SharedAutomationRule } from "@/lib/ui/api-client";
+// `DependencyEndpoint` is imported (not just re-exported) because `Dependency`
+// below references it: `export … from` forwards a name without binding it in
+// this module's scope.
+import type {
+  AutomationRule as SharedAutomationRule,
+  DependencyEndpoint,
+} from "@/lib/ui/api-client";
 import type { ApiProjectIntelligence, Band } from "@/lib/ui/intelligence-types";
 
 export type HealthProject = {
@@ -35,7 +41,7 @@ export type Milestone = {
  * endpoint shape `api-client.ts` already describes, and the local copy that
  * used to live here had weakened `status` from `TaskStatus` to `string`.
  */
-export type { DependencyEndpoint } from "@/lib/ui/api-client";
+export type { DependencyEndpoint };
 
 /**
  * The overview route's projection of an automation rule.
