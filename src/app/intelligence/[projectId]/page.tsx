@@ -23,6 +23,7 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
+import { useForecastStream } from "@/lib/ui/use-forecast-stream";
 
 /**
  * Single-project intelligence.
@@ -212,16 +213,6 @@ function BriefSkeleton() {
   );
 }
 
-/**
- * Lifecycle of the trajectory forecast.
- *
- * `insufficient` is distinct from `hidden`: the project is real but too young or
- * too small to forecast, which the user should be told plainly rather than left
- * wondering why the section is empty. `hidden` still covers every failure and
- * the not-configured (501) case, so a missing key degrades to nothing at all.
- */
-type ForecastState = "loading" | "streaming" | "done" | "insufficient" | "hidden";
-
 /** Animated gradient bars, standing in for the two sentences while they stream. */
 function TrajectorySkeleton() {
   return (
@@ -256,8 +247,7 @@ export default function ProjectIntelligencePage() {
   /** Bumped by Refresh so the brief re-streams alongside the deterministic data. */
   const [refreshToken, setRefreshToken] = useState(0);
 
-  const [forecast, setForecast] = useState("");
-  const [forecastState, setForecastState] = useState<ForecastState>("loading");
+  const { forecast, state: forecastState } = useForecastStream(projectId, refreshToken);
 
   async function load() {
     if (!projectId) {
@@ -345,74 +335,6 @@ export default function ProjectIntelligencePage() {
         // Includes the abort below, where the component no longer exists and the
         // state setter is a no-op.
         setBriefState("hidden");
-      }
-    })();
-
-    return () => controller.abort();
-  }, [projectId, refreshToken]);
-
-  /**
-   * Stream the trajectory forecast.
-   *
-   * Independent of both `load()` and the brief: three concurrent requests, none
-   * able to block or fail another. The forecast response is either a `text/plain`
-   * token stream (success) or a small `application/json` body (`insufficient`, or
-   * a 501 the branch below treats as `hidden`), so the content type decides how
-   * to read it.
-   */
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    void (async () => {
-      setForecast("");
-      setForecastState("loading");
-
-      try {
-        const response = await fetch(
-          `/api/v1/intelligence/projects/${projectId}/forecast`,
-          { cache: "no-store", credentials: "include", signal: controller.signal },
-        );
-
-        // 501 (no key) and every other failure collapse to the same outcome: the
-        // section is not rendered.
-        if (!response.ok || !response.body) {
-          setForecastState("hidden");
-          return;
-        }
-
-        // A JSON body is the "not enough history" signal, never a stream.
-        if ((response.headers.get("content-type") ?? "").includes("application/json")) {
-          const payload = (await response.json().catch(() => null)) as
-            | { insufficient?: boolean }
-            | null;
-          setForecastState(payload?.insufficient ? "insufficient" : "hidden");
-          return;
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        setForecastState("streaming");
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          accumulated += decoder.decode(value, { stream: true });
-          setForecast(accumulated);
-        }
-
-        accumulated += decoder.decode();
-        setForecast(accumulated);
-        setForecastState(accumulated.trim().length > 0 ? "done" : "hidden");
-      } catch {
-        setForecastState("hidden");
       }
     })();
 
