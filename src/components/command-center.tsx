@@ -29,7 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { apiRequest, ClientApiError } from "@/lib/ui/api-client";
+import { apiRequest } from "@/lib/ui/api-client";
 import {
   groupCommands,
   matchCommands,
@@ -45,6 +45,7 @@ import {
   type SearchResult,
 } from "@/lib/domain/search";
 import type { Role } from "@/lib/ui/permissions";
+import { useAiCompose, type ParsedTask } from "@/lib/ui/use-ai-compose";
 
 type SearchResponse = {
   groups: SearchGroup[];
@@ -84,20 +85,6 @@ const COMMAND_ICONS: Record<CommandIconName, typeof FileText> = {
   workos: Network,
 };
 
-/** Fields the AI parse route returns. Model output, already validated server-side. */
-type ParsedTask = {
-  title: string;
-  description: string;
-  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-  dueDate: string | null;
-  notes: string;
-};
-
-type AiProject = { id: string; name: string };
-
-/** Phases of the inline "Create task with AI" flow. */
-type AiPhase = "input" | "loading" | "preview";
-
 const PRIORITY_STYLES: Record<ParsedTask["priority"], string> = {
   LOW: "border-slate-400/30 bg-slate-400/10 text-slate-300",
   MEDIUM: "border-teal-300/30 bg-teal-300/10 text-teal-200",
@@ -133,24 +120,23 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [copied, setCopied] = useState(false);
 
-  // ── "Create task with AI" inline mode ─────────────────────────────────────
-  const [aiMode, setAiMode] = useState(false);
-  const [aiPhase, setAiPhase] = useState<AiPhase>("input");
-  const [aiText, setAiText] = useState("");
-  const [aiProjects, setAiProjects] = useState<AiProject[]>([]);
-  const [aiProjectId, setAiProjectId] = useState("");
-  const [aiParsed, setAiParsed] = useState<ParsedTask | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
-
   const inputRef = useRef<HTMLInputElement>(null);
-  const aiInputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   /** Element focused before opening, so Escape can hand focus back. */
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  /**
+   * Forward reference to `closePalette` so the AI hook can request a full close
+   * without pulling the palette-level state into the hook. `closePalette` also
+   * calls back into the hook (to discard AI state), so a direct dependency
+   * would loop.
+   */
+  const closePaletteRef = useRef<() => void>(() => {});
 
   const parsed = useMemo(() => parseSearchQuery(query), [query]);
   const allowedCommands = useMemo(() => visibleCommands(role), [role]);
+
+  const requestClose = useCallback(() => closePaletteRef.current(), []);
+  const ai = useAiCompose({ onClose: requestClose, open });
 
   // ── Open / close ────────────────────────────────────────────────────────
 
@@ -169,114 +155,14 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
     setActiveIndex(0);
     // Discard any in-flight AI compose state — Escape or a backdrop click must
     // leave nothing behind.
-    setAiMode(false);
-    setAiPhase("input");
-    setAiText("");
-    setAiParsed(null);
-    setAiError(null);
-    setAiBusy(false);
+    ai.discardAiCompose();
     // Return focus where the user left it, so keyboard flow is not lost.
     restoreFocusRef.current?.focus?.();
-  }, []);
+  }, [ai]);
 
-  // ── "Create task with AI" ─────────────────────────────────────────────────
-  // The palette does not navigate away for this command; it swaps its body for
-  // an inline compose surface. Task creation still goes through the existing
-  // task endpoint — this flow only parses and then confirms.
-
-  const openAiCompose = useCallback(() => {
-    setAiError(null);
-    setAiParsed(null);
-    setAiText("");
-    setAiPhase("input");
-    setAiMode(true);
-
-    apiRequest<{ projects: AiProject[] }>("/api/v1/projects")
-      .then((data) => {
-        setAiProjects(data.projects);
-        setAiProjectId((current) => current || data.projects[0]?.id || "");
-      })
-      .catch(() => setAiError("Could not load your projects. Close and try again."));
-  }, []);
-
-  const submitAiParse = useCallback(async () => {
-    const text = aiText.trim();
-    if (!text || !aiProjectId) {
-      return;
-    }
-
-    setAiPhase("loading");
-    setAiError(null);
-
-    try {
-      const parsed = await apiRequest<ParsedTask>("/api/v1/ai/parse-task", {
-        method: "POST",
-        body: { text, projectId: aiProjectId },
-      });
-      setAiParsed(parsed);
-      setAiPhase("preview");
-    } catch (caught) {
-      const message =
-        caught instanceof ClientApiError
-          ? caught.message
-          : "Could not parse that. Try rephrasing the task.";
-      setAiError(message);
-      setAiPhase("input");
-    }
-  }, [aiProjectId, aiText]);
-
-  const createParsedTask = useCallback(async () => {
-    if (!aiParsed || !aiProjectId) {
-      return;
-    }
-
-    setAiBusy(true);
-    setAiError(null);
-
-    try {
-      await apiRequest(`/api/v1/projects/${aiProjectId}/tasks`, {
-        method: "POST",
-        body: {
-          title: aiParsed.title,
-          description: aiParsed.description || undefined,
-          priority: aiParsed.priority,
-          status: "TODO",
-          // The task endpoint expects a full ISO datetime; the parser returns a
-          // bare calendar date. Anchor it to midnight UTC so validation passes.
-          dueDate: aiParsed.dueDate
-            ? new Date(`${aiParsed.dueDate}T00:00:00.000Z`).toISOString()
-            : null,
-        },
-      });
-      closePalette();
-      router.refresh();
-    } catch (caught) {
-      setAiBusy(false);
-      setAiPhase("preview");
-      setAiError(
-        caught instanceof ClientApiError ? caught.message : "Could not create the task.",
-      );
-    }
-  }, [aiParsed, aiProjectId, closePalette, router]);
-
-  const editParsedTask = useCallback(() => {
-    if (!aiParsed) {
-      return;
-    }
-
-    // Hand the draft to the standard task form. Only the fields that form
-    // actually exposes (project + title) are carried; the rest would be dropped.
-    const params = new URLSearchParams({ new: "task" });
-    if (aiProjectId) {
-      params.set("projectId", aiProjectId);
-    }
-    if (aiParsed.title) {
-      params.set("title", aiParsed.title);
-    }
-
-    closePalette();
-    router.push(`/projects?${params.toString()}`);
-  }, [aiParsed, aiProjectId, closePalette, router]);
+  useEffect(() => {
+    closePaletteRef.current = closePalette;
+  }, [closePalette]);
 
   // ── Global shortcuts ────────────────────────────────────────────────────
   // ⌘K / Ctrl+K opens. "/" opens when not already typing somewhere. "?" opens
@@ -340,13 +226,6 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
       queueMicrotask(() => inputRef.current?.focus());
     }
   }, [open]);
-
-  // Focus the compose box the moment AI mode takes over the dialog.
-  useEffect(() => {
-    if (open && aiMode && aiPhase === "input") {
-      queueMicrotask(() => aiInputRef.current?.focus());
-    }
-  }, [open, aiMode, aiPhase]);
 
   // Lock background scroll while the dialog owns the screen.
   useEffect(() => {
@@ -478,7 +357,7 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
 
       switch (command.action) {
         case "createTaskAI": {
-          openAiCompose();
+          ai.openAiCompose();
           return;
         }
         case "signOut": {
@@ -505,7 +384,7 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
           closePalette();
       }
     },
-    [closePalette, openAiCompose, router],
+    [ai, closePalette, router],
   );
 
   const activate = useCallback(
@@ -535,7 +414,7 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
 
     // In AI compose mode the textarea owns the keyboard — arrows move the
     // cursor, Enter inserts a newline. None of the list navigation applies.
-    if (aiMode) {
+    if (ai.aiMode) {
       return;
     }
 
@@ -615,16 +494,25 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
             onKeyDown={onDialogKeyDown}
             role="dialog"
           >
-            {aiMode ? (
-              <div>
+            {ai.aiMode ? (
+              <AiComposePanel ai={ai} onClose={closePalette} />
+            ) : (
+              <>
                 <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-                  <Sparkles className="shrink-0 text-violet-300" size={20} />
-                  <span className="min-w-0 flex-1 text-base font-semibold text-white">
-                    Create task with AI
-                  </span>
-                  <span className="rounded-lg border border-violet-300/30 bg-violet-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200">
-                    AI
-                  </span>
+                  <Search className="shrink-0 text-teal-300" size={20} />
+                  <input
+                    aria-activedescendant={activeRowKey ? `palette-${activeRowKey}` : undefined}
+                    aria-autocomplete="list"
+                    aria-controls="palette-listbox"
+                    aria-expanded="true"
+                    aria-label="Search the workspace or run a command"
+                    className="h-12 min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-slate-600"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search tasks, projects, people…  or type > for commands"
+                    ref={inputRef}
+                    role="combobox"
+                    value={query}
+                  />
                   <button
                     aria-label="Close command center"
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-400 transition-all hover:bg-white/10 hover:text-white"
@@ -635,300 +523,315 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
                   </button>
                 </div>
 
-                <div className="max-h-[58vh] overflow-y-auto p-4">
-                  {aiError && (
-                    <p className="mb-3 rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">
-                      {aiError}
-                    </p>
+                {parsed.scope && (
+                  <p className="border-b border-white/5 bg-teal-300/5 px-4 py-2 text-xs text-teal-200">
+                    Scoped to {parsed.scope}s. Delete the prefix to search everything.
+                  </p>
+                )}
+
+                <div
+                  className="max-h-[58vh] overflow-y-auto p-2"
+                  id="palette-listbox"
+                  ref={listRef}
+                  role="listbox"
+                >
+                  {sections.map((section) => (
+                    <div className="mb-1" key={section.label}>
+                      <div className="flex items-center justify-between px-3 pb-1 pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {section.label}
+                        </p>
+                        {section.meta && (
+                          <p className="text-[11px] text-slate-600">{section.meta}</p>
+                        )}
+                      </div>
+
+                      {section.rows.map((row) => {
+                        const index = rows.findIndex((candidate) => candidate.key === row.key);
+                        const active = index === activeIndex;
+
+                        return (
+                          <PaletteRowView
+                            active={active}
+                            key={row.key}
+                            onActivate={() => activate(row)}
+                            onHover={() => setActiveIndex(index)}
+                            row={row}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+
+                  {showEmpty && (
+                    <div className="px-4 py-10 text-center text-sm text-slate-500">
+                      {error
+                        ? error
+                        : parsed.phrase
+                          ? "Nothing matched in what you have access to."
+                          : "Start typing to search, or press Enter on a command above."}
+                      {parsed.phrase && !error && (
+                        <button
+                          className="mt-4 block w-full rounded-2xl border border-white/10 px-4 py-3 text-sm text-slate-300 transition-all hover:bg-white/[0.06] hover:text-white"
+                          onClick={() => {
+                            closePalette();
+                            router.push(`/search?q=${encodeURIComponent(parsed.raw)}`);
+                          }}
+                          type="button"
+                        >
+                          Search everything for “{parsed.raw}”
+                        </button>
+                      )}
+                    </div>
                   )}
 
-                  {aiPhase !== "preview" ? (
-                    <div className="space-y-3">
-                      <textarea
-                        ref={aiInputRef}
-                        value={aiText}
-                        onChange={(event) => setAiText(event.target.value)}
-                        disabled={aiPhase === "loading"}
-                        rows={4}
-                        aria-label="Describe the task"
-                        placeholder="Describe the task…  e.g. “Ship the billing hotfix by Friday, high priority, needs review from Sam”"
-                        className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-slate-600 focus:border-violet-300/60 disabled:cursor-not-allowed disabled:text-slate-600"
-                        onKeyDown={(event) => {
-                          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                            event.preventDefault();
-                            void submitAiParse();
-                          }
-                        }}
-                      />
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <select
-                          aria-label="Project for the new task"
-                          value={aiProjectId}
-                          onChange={(event) => setAiProjectId(event.target.value)}
-                          disabled={aiPhase === "loading" || aiProjects.length === 0}
-                          className="h-11 flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white outline-none transition-all focus:border-violet-300/60 disabled:cursor-not-allowed disabled:text-slate-600"
-                        >
-                          {aiProjects.length === 0 ? (
-                            <option className="bg-slate-950 text-white" value="">
-                              No projects available
-                            </option>
-                          ) : (
-                            aiProjects.map((project) => (
-                              <option
-                                className="bg-slate-950 text-white"
-                                key={project.id}
-                                value={project.id}
-                              >
-                                {project.name}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void submitAiParse()}
-                          disabled={aiPhase === "loading" || !aiText.trim() || !aiProjectId}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-300/15 px-5 text-sm font-semibold text-violet-100 transition-all hover:bg-violet-300/25 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {aiPhase === "loading" ? (
-                            <>
-                              <Loader2 className="animate-spin" size={16} />
-                              Parsing…
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles size={16} />
-                              Parse
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-slate-600">
-                        Plain English in, a structured task out. Nothing is created until you
-                        confirm.
-                      </p>
+                  {loading && rows.length === 0 && (
+                    <div className="px-4 py-10 text-center text-sm text-slate-500">
+                      Searching your workspace…
                     </div>
-                  ) : (
-                    aiParsed && (
-                      <div className="space-y-4">
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Title
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-white">
-                            {aiParsed.title}
-                          </p>
-
-                          {aiParsed.description && (
-                            <>
-                              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Description
-                              </p>
-                              <p className="mt-1 text-sm text-slate-300">
-                                {aiParsed.description}
-                              </p>
-                            </>
-                          )}
-
-                          <div className="mt-4 flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${PRIORITY_STYLES[aiParsed.priority]}`}
-                            >
-                              <Flag size={12} />
-                              {aiParsed.priority}
-                            </span>
-                            {aiParsed.dueDate && (
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-slate-300">
-                                <CalendarClock size={12} />
-                                Due {aiParsed.dueDate}
-                              </span>
-                            )}
-                          </div>
-
-                          {aiParsed.notes && (
-                            <>
-                              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Notes
-                              </p>
-                              <p className="mt-1 text-sm text-slate-400">{aiParsed.notes}</p>
-                            </>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <button
-                            type="button"
-                            onClick={() => void createParsedTask()}
-                            disabled={aiBusy}
-                            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-300/15 px-5 text-sm font-semibold text-violet-100 transition-all hover:bg-violet-300/25 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {aiBusy ? (
-                              <>
-                                <Loader2 className="animate-spin" size={16} />
-                                Creating…
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 size={16} />
-                                Create
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={editParsedTask}
-                            disabled={aiBusy}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-slate-200 transition-all hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <FileText size={16} />
-                            Edit first
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAiPhase("input");
-                              setAiParsed(null);
-                              setAiError(null);
-                            }}
-                            disabled={aiBusy}
-                            className="inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-medium text-slate-400 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Back
-                          </button>
-                        </div>
-                      </div>
-                    )
                   )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-white/[0.02] px-4 py-3 text-[11px] text-slate-500">
-                  <Hint keys="esc" label="Discard" />
-                  <span className="hidden sm:inline">
-                    Creation runs through the standard endpoint — permissions still apply.
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <>
-            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-              <Search className="shrink-0 text-teal-300" size={20} />
-              <input
-                aria-activedescendant={activeRowKey ? `palette-${activeRowKey}` : undefined}
-                aria-autocomplete="list"
-                aria-controls="palette-listbox"
-                aria-expanded="true"
-                aria-label="Search the workspace or run a command"
-                className="h-12 min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-slate-600"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tasks, projects, people…  or type > for commands"
-                ref={inputRef}
-                role="combobox"
-                value={query}
-              />
-              <button
-                aria-label="Close command center"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-400 transition-all hover:bg-white/10 hover:text-white"
-                onClick={closePalette}
-                type="button"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {parsed.scope && (
-              <p className="border-b border-white/5 bg-teal-300/5 px-4 py-2 text-xs text-teal-200">
-                Scoped to {parsed.scope}s. Delete the prefix to search everything.
-              </p>
-            )}
-
-            <div
-              className="max-h-[58vh] overflow-y-auto p-2"
-              id="palette-listbox"
-              ref={listRef}
-              role="listbox"
-            >
-              {sections.map((section) => (
-                <div className="mb-1" key={section.label}>
-                  <div className="flex items-center justify-between px-3 pb-1 pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      {section.label}
-                    </p>
-                    {section.meta && (
-                      <p className="text-[11px] text-slate-600">{section.meta}</p>
-                    )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Hint keys="↑ ↓" label="Navigate" />
+                    <Hint keys="enter" label="Open" />
+                    <Hint keys="esc" label="Close" />
                   </div>
-
-                  {section.rows.map((row) => {
-                    const index = rows.findIndex((candidate) => candidate.key === row.key);
-                    const active = index === activeIndex;
-
-                    return (
-                      <PaletteRowView
-                        active={active}
-                        key={row.key}
-                        onActivate={() => activate(row)}
-                        onHover={() => setActiveIndex(index)}
-                        row={row}
-                      />
-                    );
-                  })}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {copied && <span className="text-teal-300">Link copied</span>}
+                    {response?.truncated && (
+                      <span className="text-amber-300/80">Showing top matches</span>
+                    )}
+                    <span className="hidden sm:inline">
+                      <code className="text-slate-400">&gt;</code> commands ·{" "}
+                      <code className="text-slate-400">#</code> tasks ·{" "}
+                      <code className="text-slate-400">/</code> projects ·{" "}
+                      <code className="text-slate-400">@</code> people
+                    </span>
+                  </div>
                 </div>
-              ))}
-
-              {showEmpty && (
-                <div className="px-4 py-10 text-center text-sm text-slate-500">
-                  {error
-                    ? error
-                    : parsed.phrase
-                      ? "Nothing matched in what you have access to."
-                      : "Start typing to search, or press Enter on a command above."}
-                  {parsed.phrase && !error && (
-                    <button
-                      className="mt-4 block w-full rounded-2xl border border-white/10 px-4 py-3 text-sm text-slate-300 transition-all hover:bg-white/[0.06] hover:text-white"
-                      onClick={() => {
-                        closePalette();
-                        router.push(`/search?q=${encodeURIComponent(parsed.raw)}`);
-                      }}
-                      type="button"
-                    >
-                      Search everything for “{parsed.raw}”
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {loading && rows.length === 0 && (
-                <div className="px-4 py-10 text-center text-sm text-slate-500">
-                  Searching your workspace…
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-white/[0.02] px-4 py-3 text-[11px] text-slate-500">
-              <div className="flex flex-wrap items-center gap-3">
-                <Hint keys="↑ ↓" label="Navigate" />
-                <Hint keys="enter" label="Open" />
-                <Hint keys="esc" label="Close" />
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {copied && <span className="text-teal-300">Link copied</span>}
-                {response?.truncated && (
-                  <span className="text-amber-300/80">Showing top matches</span>
-                )}
-                <span className="hidden sm:inline">
-                  <code className="text-slate-400">&gt;</code> commands ·{" "}
-                  <code className="text-slate-400">#</code> tasks ·{" "}
-                  <code className="text-slate-400">/</code> projects ·{" "}
-                  <code className="text-slate-400">@</code> people
-                </span>
-              </div>
-            </div>
               </>
             )}
           </div>
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Inline "Create task with AI" surface. Rendered inside the palette dialog when
+ * the AI flow is active; state lives in `useAiCompose`, this is presentation.
+ */
+function AiComposePanel({
+  ai,
+  onClose,
+}: {
+  ai: ReturnType<typeof useAiCompose>;
+  onClose: () => void;
+}) {
+  const {
+    aiInputRef,
+    aiPhase,
+    aiText,
+    aiProjects,
+    aiProjectId,
+    aiParsed,
+    aiError,
+    aiBusy,
+    setAiText,
+    setAiProjectId,
+    submitAiParse,
+    createParsedTask,
+    editParsedTask,
+    backToInput,
+  } = ai;
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+        <Sparkles className="shrink-0 text-violet-300" size={20} />
+        <span className="min-w-0 flex-1 text-base font-semibold text-white">
+          Create task with AI
+        </span>
+        <span className="rounded-lg border border-violet-300/30 bg-violet-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200">
+          AI
+        </span>
+        <button
+          aria-label="Close command center"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-400 transition-all hover:bg-white/10 hover:text-white"
+          onClick={onClose}
+          type="button"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="max-h-[58vh] overflow-y-auto p-4">
+        {aiError && (
+          <p className="mb-3 rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">
+            {aiError}
+          </p>
+        )}
+
+        {aiPhase !== "preview" ? (
+          <div className="space-y-3">
+            <textarea
+              ref={aiInputRef}
+              value={aiText}
+              onChange={(event) => setAiText(event.target.value)}
+              disabled={aiPhase === "loading"}
+              rows={4}
+              aria-label="Describe the task"
+              placeholder="Describe the task…  e.g. “Ship the billing hotfix by Friday, high priority, needs review from Sam”"
+              className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-slate-600 focus:border-violet-300/60 disabled:cursor-not-allowed disabled:text-slate-600"
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  void submitAiParse();
+                }
+              }}
+            />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                aria-label="Project for the new task"
+                value={aiProjectId}
+                onChange={(event) => setAiProjectId(event.target.value)}
+                disabled={aiPhase === "loading" || aiProjects.length === 0}
+                className="h-11 flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white outline-none transition-all focus:border-violet-300/60 disabled:cursor-not-allowed disabled:text-slate-600"
+              >
+                {aiProjects.length === 0 ? (
+                  <option className="bg-slate-950 text-white" value="">
+                    No projects available
+                  </option>
+                ) : (
+                  aiProjects.map((project) => (
+                    <option
+                      className="bg-slate-950 text-white"
+                      key={project.id}
+                      value={project.id}
+                    >
+                      {project.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={() => void submitAiParse()}
+                disabled={aiPhase === "loading" || !aiText.trim() || !aiProjectId}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-300/15 px-5 text-sm font-semibold text-violet-100 transition-all hover:bg-violet-300/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {aiPhase === "loading" ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Parsing…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Parse
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-600">
+              Plain English in, a structured task out. Nothing is created until you confirm.
+            </p>
+          </div>
+        ) : (
+          aiParsed && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Title
+                </p>
+                <p className="mt-1 text-sm font-semibold text-white">{aiParsed.title}</p>
+
+                {aiParsed.description && (
+                  <>
+                    <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Description
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300">{aiParsed.description}</p>
+                  </>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${PRIORITY_STYLES[aiParsed.priority]}`}
+                  >
+                    <Flag size={12} />
+                    {aiParsed.priority}
+                  </span>
+                  {aiParsed.dueDate && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-slate-300">
+                      <CalendarClock size={12} />
+                      Due {aiParsed.dueDate}
+                    </span>
+                  )}
+                </div>
+
+                {aiParsed.notes && (
+                  <>
+                    <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Notes
+                    </p>
+                    <p className="mt-1 text-sm text-slate-400">{aiParsed.notes}</p>
+                  </>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void createParsedTask()}
+                  disabled={aiBusy}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-300/15 px-5 text-sm font-semibold text-violet-100 transition-all hover:bg-violet-300/25 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {aiBusy ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Creating…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      Create
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={editParsedTask}
+                  disabled={aiBusy}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-slate-200 transition-all hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FileText size={16} />
+                  Edit first
+                </button>
+                <button
+                  type="button"
+                  onClick={backToInput}
+                  disabled={aiBusy}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-medium text-slate-400 transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-white/[0.02] px-4 py-3 text-[11px] text-slate-500">
+        <Hint keys="esc" label="Discard" />
+        <span className="hidden sm:inline">
+          Creation runs through the standard endpoint — permissions still apply.
+        </span>
+      </div>
+    </div>
   );
 }
 
