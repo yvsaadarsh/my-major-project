@@ -19,6 +19,13 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
+import type {
+  ApiHealthSignal,
+  ApiProjectIntelligence,
+  ApiRiskFinding,
+  IntelligenceOverviewResponse,
+  Severity as ApiSeverity,
+} from "@/lib/ui/intelligence-types";
 
 /**
  * Project Health Intelligence + Dependency Risk.
@@ -29,86 +36,11 @@ import { useAuthSession } from "@/lib/ui/use-auth-session";
  * factor breakdown beside it.
  */
 
-type Severity = "ok" | "low" | "medium" | "high" | "critical";
-
-type HealthSignal = {
-  key: string;
-  label: string;
-  detail: string;
-  ratio: number;
-  points: number;
-  maxPoints: number;
-  severity: Severity;
-  evidence: Record<string, number>;
-};
-
-type ProjectIntelligence = {
-  projectId: string;
-  projectName: string;
-  score: number;
-  band: "Healthy" | "Watch" | "At risk" | "Critical";
-  completion: number;
-  factors: HealthSignal[];
-  healthy: HealthSignal[];
-  confidence: { level: "high" | "medium" | "low" | "insufficient"; caveats: string[] };
-  velocity: {
-    recentCompleted: number;
-    priorCompleted: number;
-    recentPerWeek: number;
-    direction: string;
-    changeRatio: number | null;
-  };
-  slippage: {
-    pushCount: number;
-    tasksPushed: number;
-    totalDaysPushed: number;
-    worstPushDays: number;
-    blockerPushCount: number;
-    noHistory: boolean;
-  };
-  summary: string;
-  recommendations: string[];
-  counts: {
-    total: number;
-    open: number;
-    done: number;
-    overdue: number;
-    blocked: number;
-    unassignedOpen: number;
-    milestones: number;
-    milestonesAtRisk: number;
-  };
-};
-
-type RiskFinding = {
-  level: "critical" | "warning" | "info";
-  kind: "cycle" | "bottleneck" | "chain" | "hub" | "clear";
-  headline: string;
-  detail: string;
-  taskIds: string[];
-};
-
-type OverviewResponse = {
-  generatedAt: string;
-  readOnly: boolean;
-  portfolio: {
-    projectCount: number;
-    averageScore: number;
-    worstScore: number;
-    bandCounts: Record<string, number>;
-    headline: string;
-  };
-  projects: ProjectIntelligence[];
-  risk: Array<{
-    projectId: string;
-    projectName: string;
-    bottleneckCount: number;
-    cycleCount: number;
-    longestChain: number;
-    findings: RiskFinding[];
-  }>;
-  scheduleHistory: { changesConsidered: number; truncated: boolean };
-};
+type Severity = ApiSeverity;
+type HealthSignal = ApiHealthSignal;
+type ProjectIntelligence = ApiProjectIntelligence;
+type RiskFinding = ApiRiskFinding;
+type OverviewResponse = IntelligenceOverviewResponse;
 
 const BAND_STYLES: Record<ProjectIntelligence["band"], string> = {
   "At risk": "border-orange-300/30 bg-orange-300/10 text-orange-200",

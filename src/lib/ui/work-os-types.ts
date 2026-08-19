@@ -3,10 +3,13 @@
  *
  * Kept beside the other UI types rather than inside the page, so the page file
  * is markup and the contract with the route is stated in one place. These
- * deliberately describe *that endpoint's* projection — it returns health as the
- * legacy view and milestones with a `progress` block, which is narrower than
- * the shared `Milestone` in `api-client.ts`, so they are not interchangeable.
+ * deliberately describe *that endpoint's* projection — it returns milestones
+ * with a `progress` block and dependencies with `downstreamImpact`, neither of
+ * which matches the shared shapes in `api-client.ts`. Where a shape *does*
+ * match, the shared type is reused rather than copied.
  */
+
+import type { AutomationRule as SharedAutomationRule } from "@/lib/ui/api-client";
 
 export type HealthProject = {
   id: string;
@@ -33,13 +36,21 @@ export type Milestone = {
   progress: { completedTasks: number; completion: number; totalTasks: number };
 };
 
-export type DependencyEndpoint = {
-  id: string;
-  title: string;
-  status: string;
-  projectId: string;
-  project: { id: string; name: string };
-};
+/**
+ * Re-exported rather than redeclared: the overview route selects exactly the
+ * endpoint shape `api-client.ts` already describes, and the local copy that
+ * used to live here had weakened `status` from `TaskStatus` to `string`.
+ */
+export type { DependencyEndpoint } from "@/lib/ui/api-client";
+
+/**
+ * The overview route's projection of an automation rule.
+ *
+ * Derived from the shared type minus the two timestamps its `select` omits, so
+ * the union on `trigger`/`action` is preserved and the response cannot claim
+ * fields it never sends.
+ */
+export type AutomationRule = Omit<SharedAutomationRule, "createdAt" | "updatedAt">;
 
 export type Dependency = {
   id: string;
@@ -71,18 +82,6 @@ export type NotificationItem = {
   priority: string;
   readAt: string | null;
   createdAt: string;
-};
-
-export type AutomationRule = {
-  id: string;
-  name: string;
-  description: string | null;
-  enabled: boolean;
-  trigger: string;
-  condition: string;
-  action: string;
-  runsThisMonth: number;
-  lastRunAt: string | null;
 };
 
 export type ActivityLog = {

@@ -24,6 +24,12 @@ import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import { useForecastStream } from "@/lib/ui/use-forecast-stream";
+import type {
+  ApiBottleneck,
+  ApiProjectIntelligence,
+  ProjectIntelligenceResponse,
+  Severity as ApiSeverity,
+} from "@/lib/ui/intelligence-types";
 
 /**
  * Single-project intelligence.
@@ -36,105 +42,16 @@ import { useForecastStream } from "@/lib/ui/use-forecast-stream";
  * produced it.
  */
 
-type Severity = "ok" | "low" | "medium" | "high" | "critical";
+type Severity = ApiSeverity;
+type Health = ApiProjectIntelligence;
+type Bottleneck = ApiBottleneck;
 
-type HealthSignal = {
-  key: string;
-  label: string;
-  detail: string;
-  ratio: number;
-  points: number;
-  maxPoints: number;
-  severity: Severity;
-  evidence: Record<string, number>;
-};
-
-type Health = {
-  projectName: string;
-  score: number;
-  band: "Healthy" | "Watch" | "At risk" | "Critical";
-  completion: number;
-  factors: HealthSignal[];
-  healthy: HealthSignal[];
-  confidence: { level: "high" | "medium" | "low" | "insufficient"; caveats: string[] };
-  velocity: { recentCompleted: number; priorCompleted: number; direction: string };
-  slippage: { pushCount: number; totalDaysPushed: number; noHistory: boolean };
-  summary: string;
-  recommendations: string[];
-  counts: {
-    total: number;
-    open: number;
-    done: number;
-    overdue: number;
-    blocked: number;
-    unassignedOpen: number;
-    milestones: number;
-    milestonesAtRisk: number;
-  };
-};
-
-type Bottleneck = {
-  taskId: string;
-  title: string;
-  status: string;
-  priority: string;
-  severity: "critical" | "high" | "medium" | "low";
-  impactScore: number;
-  directBlockedCount: number;
-  totalBlockedCount: number;
-  openBlockedCount: number;
-  overdueBlockedCount: number;
-  actionableNow: boolean;
-  reasons: string[];
-  recommendation: string;
-};
-
-type Cycle = { path: string[]; titles: string[] };
-
-type Risk = {
-  blockingEdgeCount: number;
-  cycles: Cycle[];
-  longestChain: { length: number; openCount: number; titles: string[]; path: string[] };
-  bottlenecks: Bottleneck[];
-  findings: Array<{
-    level: "critical" | "warning" | "info";
-    kind: string;
-    headline: string;
-    detail: string;
-    taskIds: string[];
-  }>;
-};
-
-type TaskSlippage = {
-  taskId: string;
-  title: string;
-  pushes: number;
-  totalDaysPushed: number;
-  worstPushDays: number;
-  isBlocker: boolean;
-  originalDueDate: string | null;
-  currentDueDate: string | null;
-  lastChangedAt: string;
-};
-
-type CrossProjectEdge = {
-  edgeId: string;
-  direction: "inbound" | "outbound";
-  otherTaskId: string;
-  otherProject: { id: string; name: string } | null;
-  type: string;
-};
-
-type Response = {
-  generatedAt: string;
-  readOnly: boolean;
-  project: { id: string; name: string; status: string };
-  health: Health;
-  risk: Risk;
-  slippageRetrospective: TaskSlippage[];
-  crossProject: { edges: CrossProjectEdge[]; inbound: number; outbound: number };
-  scheduleHistory: { changesConsidered: number; truncated: boolean };
-};
+/**
+ * Named locally because `Response` would shadow the DOM global in a file that
+ * also calls `fetch`. The old local `type Response` worked only because nothing
+ * annotated a fetch result with it.
+ */
+type IntelligenceResponse = ProjectIntelligenceResponse;
 
 const BAND_STYLES: Record<Health["band"], string> = {
   "At risk": "border-orange-300/30 bg-orange-300/10 text-orange-200",
@@ -238,7 +155,7 @@ export default function ProjectIntelligencePage() {
     role,
   } = useAuthSession({ requireOrganization: true });
 
-  const [data, setData] = useState<Response | null>(null);
+  const [data, setData] = useState<IntelligenceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -259,7 +176,7 @@ export default function ProjectIntelligencePage() {
 
     try {
       setData(
-        await apiRequest<Response>(`/api/v1/intelligence/projects/${projectId}`, {
+        await apiRequest<IntelligenceResponse>(`/api/v1/intelligence/projects/${projectId}`, {
           cache: "no-store",
         }),
       );
