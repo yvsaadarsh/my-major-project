@@ -6,6 +6,7 @@ import { ArrowRight, Boxes, CheckCircle2, LockKeyhole, ShieldAlert, X } from "lu
 
 import { InlineError } from "@/components/page-state";
 import { apiRequest, ClientApiError } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import {
   assessPassword,
   describeLockout,
@@ -240,7 +241,7 @@ export default function AuthPage() {
         return;
       }
 
-      setError(caught instanceof Error ? caught.message : "Authentication failed.");
+      setError(errorMessage(caught, "Authentication failed."));
     } finally {
       setLoading(false);
     }

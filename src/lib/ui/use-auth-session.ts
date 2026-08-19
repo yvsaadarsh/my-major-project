@@ -9,6 +9,7 @@ import {
   ClientApiError,
   type AuthMe,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 
 export function useAuthSession(options: { requireOrganization?: boolean } = {}) {
   const router = useRouter();
@@ -42,7 +43,7 @@ export function useAuthSession(options: { requireOrganization?: boolean } = {}) 
           return;
         }
 
-        setError(caught instanceof Error ? caught.message : "Unable to load session.");
+        setError(errorMessage(caught, "Unable to load session."));
       })
       .finally(() => {
         if (mounted) {

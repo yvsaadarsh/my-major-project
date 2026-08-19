@@ -14,6 +14,7 @@ import {
   type Project,
   type Task,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -56,7 +57,7 @@ export default function DashboardPage() {
       })
       .catch((caught) => {
         if (mounted) {
-          setError(caught instanceof Error ? caught.message : "Unable to load dashboard.");
+          setError(errorMessage(caught, "Unable to load dashboard."));
         }
       })
       .finally(() => {

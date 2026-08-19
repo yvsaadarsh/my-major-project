@@ -19,6 +19,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type { ApiProjectIntelligence, Band } from "@/lib/ui/intelligence-types";
 
@@ -154,7 +155,7 @@ export default function AnalyticsPage() {
       const response = await apiRequest<AnalyticsOverview>("/api/v1/analytics/overview");
       setData(response);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load analytics.");
+      setError(errorMessage(caught, "Unable to load analytics."));
     } finally {
       setLoading(false);
     }

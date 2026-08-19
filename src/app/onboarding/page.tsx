@@ -23,6 +23,7 @@ import {
   type AuthMe,
   type Project,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can, roleLabel, type Role } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -92,7 +93,7 @@ export default function OnboardingPage() {
       await refreshAuth();
       setStep(1);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create organization.");
+      setError(errorMessage(caught, "Unable to create organization."));
     } finally {
       setSaving(false);
     }
@@ -117,9 +118,10 @@ export default function OnboardingPage() {
       setMemberRole("MEMBER");
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to add member. The user must register before being invited.",
+        errorMessage(
+          caught,
+          "Unable to add member. The user must register before being invited.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -170,7 +172,7 @@ export default function OnboardingPage() {
 
       setStep(3);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create project.");
+      setError(errorMessage(caught, "Unable to create project."));
     } finally {
       setSaving(false);
     }

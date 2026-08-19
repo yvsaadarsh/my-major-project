@@ -15,6 +15,7 @@ import {
   type AutomationRunSummary,
   type AutomationTrigger,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -63,7 +64,7 @@ export default function AutomationsPage() {
       );
       setRules(response.automationRules);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load automations.");
+      setError(errorMessage(caught, "Unable to load automations."));
     } finally {
       setLoading(false);
     }
@@ -97,7 +98,7 @@ export default function AutomationsPage() {
       setForm(emptyForm);
       await loadRules();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create automation.");
+      setError(errorMessage(caught, "Unable to create automation."));
     } finally {
       setSaving(false);
     }
@@ -115,7 +116,7 @@ export default function AutomationsPage() {
       });
       await loadRules();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update automation.");
+      setError(errorMessage(caught, "Unable to update automation."));
     }
   }
 
@@ -128,7 +129,7 @@ export default function AutomationsPage() {
       await apiRequest(`/api/v1/automations/${rule.id}`, { method: "DELETE" });
       await loadRules();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete automation.");
+      setError(errorMessage(caught, "Unable to delete automation."));
     }
   }
 
@@ -147,7 +148,7 @@ export default function AutomationsPage() {
       setSummary(response.summary);
       await loadRules();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to run automations.");
+      setError(errorMessage(caught, "Unable to run automations."));
     } finally {
       setRunning(false);
     }

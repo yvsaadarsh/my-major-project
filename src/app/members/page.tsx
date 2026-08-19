@@ -8,6 +8,7 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { PermissionAction } from "@/components/permission-action";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest, formatStatus, type Member, type Task } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can, roleDescription, roleLabel, type Role } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -50,7 +51,7 @@ export default function MembersPage() {
         setRoster([]);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load members.");
+      setError(errorMessage(caught, "Unable to load members."));
     } finally {
       setLoading(false);
     }
@@ -82,7 +83,7 @@ export default function MembersPage() {
       setInviteRole("MEMBER");
       await loadMembers();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to invite member.");
+      setError(errorMessage(caught, "Unable to invite member."));
     } finally {
       setSaving(false);
     }
@@ -103,7 +104,7 @@ export default function MembersPage() {
       });
       await loadMembers();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update member role.");
+      setError(errorMessage(caught, "Unable to update member role."));
     } finally {
       setManagingMemberId(null);
     }
@@ -127,7 +128,7 @@ export default function MembersPage() {
       });
       await loadMembers();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to disable member.");
+      setError(errorMessage(caught, "Unable to disable member."));
     } finally {
       setManagingMemberId(null);
     }

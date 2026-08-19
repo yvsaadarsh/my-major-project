@@ -18,6 +18,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type {
   ApiHealthSignal,
@@ -258,7 +259,7 @@ export default function IntelligencePage() {
         await apiRequest<OverviewResponse>("/api/v1/intelligence/overview", { cache: "no-store" }),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load intelligence.");
+      setError(errorMessage(caught, "Could not load intelligence."));
     } finally {
       setLoading(false);
     }

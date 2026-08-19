@@ -36,6 +36,7 @@ import {
   type SavedView,
   type Task,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -165,7 +166,7 @@ export default function ProjectsPage() {
         setTasks([]);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load project board.");
+      setError(errorMessage(caught, "Unable to load project board."));
     } finally {
       setLoading(false);
     }
@@ -252,7 +253,7 @@ export default function ProjectsPage() {
       })
       .catch((caught) => {
         if (mounted) {
-          setError(caught instanceof Error ? caught.message : "Unable to load tasks.");
+          setError(errorMessage(caught, "Unable to load tasks."));
         }
       });
 
@@ -272,7 +273,7 @@ export default function ProjectsPage() {
 
     loadSavedViews(selectedProjectId).catch((caught) => {
       if (mounted) {
-        setError(caught instanceof Error ? caught.message : "Unable to load saved views.");
+        setError(errorMessage(caught, "Unable to load saved views."));
       }
     });
 
@@ -374,7 +375,7 @@ export default function ProjectsPage() {
       );
       setSelectedViewId(response.view.id);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save this view.");
+      setError(errorMessage(caught, "Unable to save this view."));
     }
   }
 
@@ -395,7 +396,7 @@ export default function ProjectsPage() {
         current.map((view) => (view.id === response.view.id ? response.view : view)),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : failure);
+      setError(errorMessage(caught, failure));
     }
   }
 
@@ -429,7 +430,7 @@ export default function ProjectsPage() {
       setSavedViews((current) => current.filter((view) => view.id !== selectedView.id));
       setSelectedViewId(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete this view.");
+      setError(errorMessage(caught, "Unable to delete this view."));
     }
   }
 

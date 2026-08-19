@@ -19,6 +19,7 @@ import { Highlighted } from "@/components/highlighted-text";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import {
   entityLabel,
@@ -116,7 +117,7 @@ export default function SearchPage() {
           return;
         }
         setResponse(null);
-        setError(caught instanceof Error ? caught.message : "Search failed.");
+        setError(errorMessage(caught, "Search failed."));
       })
       .finally(() => setLoading(false));
 

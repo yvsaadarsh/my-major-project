@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest, formatStatus, type Task } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
 type ProgressAnalytics = {
@@ -64,7 +65,7 @@ export default function ProgressPage() {
       })
       .catch((caught) => {
         if (mounted) {
-          setError(caught instanceof Error ? caught.message : "Unable to load progress data.");
+          setError(errorMessage(caught, "Unable to load progress data."));
         }
       })
       .finally(() => {

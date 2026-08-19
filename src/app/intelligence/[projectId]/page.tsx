@@ -22,6 +22,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import { useForecastStream } from "@/lib/ui/use-forecast-stream";
 import type {
@@ -181,7 +182,7 @@ export default function ProjectIntelligencePage() {
         }),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load intelligence.");
+      setError(errorMessage(caught, "Could not load intelligence."));
     } finally {
       setLoading(false);
     }

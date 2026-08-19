@@ -12,6 +12,7 @@ import {
   type AppNotification,
   type NotificationPreference,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
 type NotificationsResponse = {
@@ -65,7 +66,7 @@ export default function NotificationsPage() {
       setUnreadCount(list.unreadCount);
       setPreference(prefs.preference);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load notifications.");
+      setError(errorMessage(caught, "Unable to load notifications."));
     } finally {
       setLoading(false);
     }
@@ -86,7 +87,7 @@ export default function NotificationsPage() {
       });
       await loadNotifications(filter);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update notification.");
+      setError(errorMessage(caught, "Unable to update notification."));
     }
   }
 
@@ -95,7 +96,7 @@ export default function NotificationsPage() {
       await apiRequest("/api/v1/notifications/read-all", { method: "POST" });
       await loadNotifications(filter);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to mark all read.");
+      setError(errorMessage(caught, "Unable to mark all read."));
     }
   }
 
@@ -117,7 +118,7 @@ export default function NotificationsPage() {
       );
       setPreference(response.preference);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save preferences.");
+      setError(errorMessage(caught, "Unable to save preferences."));
     } finally {
       setSavingPrefs(false);
     }

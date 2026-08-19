@@ -24,6 +24,7 @@ import {
   WorkloadPanel,
 } from "@/components/work-os/overview-panels";
 import { apiRequest } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type { Overview } from "@/lib/ui/work-os-types";
@@ -59,7 +60,7 @@ export default function WorkOsPage() {
       const response = await apiRequest<Overview>("/api/v1/work-os/overview");
       setOverview(response);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load Work OS.");
+      setError(errorMessage(caught, "Unable to load Work OS."));
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ export default function WorkOsPage() {
       setAutomationName("");
       await loadOverview();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create automation.");
+      setError(errorMessage(caught, "Unable to create automation."));
     } finally {
       setSaving(false);
     }

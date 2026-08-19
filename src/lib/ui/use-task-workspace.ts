@@ -10,6 +10,7 @@ import {
   type Member,
   type Task,
 } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can, type Role } from "@/lib/ui/permissions";
 
 /**
@@ -78,7 +79,7 @@ export function useTaskWorkspace({
       setActivity(activityResponse.activity);
       setSiblingTasks(tasksResponse.tasks.filter((item) => item.id !== current.id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load task context.");
+      setError(errorMessage(caught, "Unable to load task context."));
     }
   }
 
@@ -106,7 +107,7 @@ export function useTaskWorkspace({
       setTask(response.task);
       await loadRelatedData(response.task);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load task.");
+      setError(errorMessage(caught, "Unable to load task."));
     } finally {
       setLoading(false);
     }
@@ -136,7 +137,7 @@ export function useTaskWorkspace({
       });
       setTask((current) => (current ? { ...current, ...response.task } : response.task));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update task.");
+      setError(errorMessage(caught, "Unable to update task."));
     } finally {
       setSaving(false);
     }
@@ -159,7 +160,7 @@ export function useTaskWorkspace({
       setEditOpen(false);
       await loadTask();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to edit task.");
+      setError(errorMessage(caught, "Unable to edit task."));
     } finally {
       setSaving(false);
     }
@@ -185,7 +186,7 @@ export function useTaskWorkspace({
     apiRequest<{ members: Member[] }>("/api/v1/members")
       .then((response) => setMembers(response.members))
       .catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "Unable to load members."),
+        setError(errorMessage(caught, "Unable to load members.")),
       )
       .finally(() => setMembersLoading(false));
   }
@@ -204,7 +205,7 @@ export function useTaskWorkspace({
       setAssignOpen(false);
       await loadTask();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to assign task.");
+      setError(errorMessage(caught, "Unable to assign task."));
     } finally {
       setSaving(false);
     }
@@ -226,7 +227,7 @@ export function useTaskWorkspace({
       await apiRequest(`/api/v1/tasks/${task.id}`, { method: "DELETE" });
       router.push("/projects");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete task.");
+      setError(errorMessage(caught, "Unable to delete task."));
     } finally {
       setSaving(false);
     }
@@ -249,7 +250,7 @@ export function useTaskWorkspace({
       setComment("");
       await loadTask();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to add comment.");
+      setError(errorMessage(caught, "Unable to add comment."));
     } finally {
       setSaving(false);
     }
@@ -278,7 +279,7 @@ export function useTaskWorkspace({
       setSubtaskTitle("");
       await loadTask();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create subtask.");
+      setError(errorMessage(caught, "Unable to create subtask."));
     } finally {
       setSaving(false);
     }
@@ -299,7 +300,7 @@ export function useTaskWorkspace({
       });
       await loadTask();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update subtask.");
+      setError(errorMessage(caught, "Unable to update subtask."));
     } finally {
       setSaving(false);
     }
@@ -327,7 +328,7 @@ export function useTaskWorkspace({
       await loadTask();
     } catch (caught) {
       setDependencyError(
-        caught instanceof Error ? caught.message : "Unable to add dependency.",
+        errorMessage(caught, "Unable to add dependency."),
       );
     } finally {
       setSaving(false);

@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { PermissionAction } from "@/components/permission-action";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest, type Project } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can, type Role } from "@/lib/ui/permissions";
 
 /**
@@ -44,7 +45,7 @@ export function CreateProjectForm({
       onCreated(response.project);
       setName("");
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Unable to create project.");
+      onError(errorMessage(caught, "Unable to create project."));
     } finally {
       setSaving(false);
     }

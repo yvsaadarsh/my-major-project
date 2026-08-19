@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { PermissionAction } from "@/components/permission-action";
 import { SectionCard } from "@/components/section-card";
 import { apiRequest, type Member, type Project, type Task } from "@/lib/ui/api-client";
+import { errorMessage } from "@/lib/ui/error-message";
 import { can, type Role } from "@/lib/ui/permissions";
 
 /**
@@ -69,7 +70,7 @@ export function CreateTaskForm({
       setTitle("");
       setAssignedToUserId("");
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Unable to create task.");
+      onError(errorMessage(caught, "Unable to create task."));
     } finally {
       setSaving(false);
     }
