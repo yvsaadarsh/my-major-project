@@ -21,6 +21,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
+import { SimulationWorkspace } from "@/components/simulation/SimulationWorkspace";
 import { apiRequest } from "@/lib/ui/api-client";
 import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
@@ -772,6 +773,15 @@ export default function ProjectIntelligencePage() {
                 </ul>
               </SectionCard>
             </div>
+          )}
+
+          {/* ── What-If Simulation Workspace ──────────────────────────── */}
+          {projectId && (
+            <SimulationWorkspace
+              projectId={projectId}
+              role={role}
+              onApplied={() => setRefreshToken((t) => t + 1)}
+            />
           )}
 
           <p className="mt-6 text-xs text-slate-500">
