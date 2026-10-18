@@ -58,6 +58,7 @@ function reset() {
   __store.activityLog.length = 0;
   __store.taskDependency.length = 0;
   __store.automationRule.length = 0;
+  __store.organizationMember.length = 0;
 
   __session.tenantId = "org_a";
   __session.role = "ADMIN";
@@ -700,6 +701,54 @@ async function main() {
   eq("interpret 502 when the model call fails", res.status, 502);
   check("interpret 502 body carries ai_error", (await readJson(res)).error === "ai_error");
 
+  // [D-10] An unconfigured deployment is 501 on BOTH AI routes, not 502 on one
+  // and 501 on the other. 502 now means a genuine upstream failure.
+  reset();
+  __ai.configured = false;
+  res = await interpretPolicy(jsonReq({ policy: "notify me when tasks slip" }), ctx({}));
+  eq("[D-10] interpret 501 when AI is not configured", res.status, 501);
+  {
+    const body = await readJson(res);
+    eq("[D-10] interpret 501 carries ai_not_configured", body.error, "ai_not_configured");
+    check("[D-10] interpret 501 carries a message", typeof body.message === "string");
+  }
+
+  reset();
+  __ai.configured = false;
+  addTasks(2);
+  res = await simulate(
+    jsonReq({ scenario: "x", change: statusChange("task_1") }),
+    ctx({ projectId: "proj_a" }),
+  );
+  eq("[D-10] simulate 501 when AI is not configured", res.status, 501);
+  {
+    const body = await readJson(res);
+    eq("[D-10] simulate 501 carries the same code as interpret", body.error, "ai_not_configured");
+    check("[D-10] simulate 501 carries a message", typeof body.message === "string");
+  }
+
+  reset();
+  __ai.configured = false;
+  addTasks(2);
+  {
+    // Both routes must agree, so assert the two bodies are identical in shape.
+    const a = await readJson(
+      await interpretPolicy(jsonReq({ policy: "notify me when tasks slip" }), ctx({})),
+    );
+    const b = await readJson(
+      await simulate(
+        jsonReq({ scenario: "x", change: statusChange("task_1") }),
+        ctx({ projectId: "proj_a" }),
+      ),
+    );
+    eq("[D-10] both routes return the same error code", a.error, b.error);
+    check(
+      "[D-10] both routes return the same key set",
+      JSON.stringify(Object.keys(a).sort()) === JSON.stringify(Object.keys(b).sort()),
+      `${JSON.stringify(Object.keys(a))} vs ${JSON.stringify(Object.keys(b))}`,
+    );
+  }
+
   reset();
   __ai.fastReply = "this is not json";
   res = await interpretPolicy(jsonReq({ policy: "notify me when tasks slip" }), ctx({}));
@@ -1094,6 +1143,107 @@ async function main() {
     const body = await readJson(res);
     eq("[D-4] body carries invalid_milestone", body.error?.code, "invalid_milestone");
     eq("[D-4] no task was created", __store.task.length, tasksBefore);
+  }
+
+  // ── [D-6] assignee must be an active member of this organization ──────────
+  //
+  // The composite FK already blocks a cross-tenant assignment, so these tests
+  // are about the response: a non-member must come back as 422 invalid_member,
+  // the same contract POST /projects/:projectId/tasks already returns, rather
+  // than a raw constraint violation.
+  const addMember = (userId: string, organizationId = "org_a", status = "ACTIVE") => {
+    __store.organizationMember.push({
+      id: `mem_${userId}`, organizationId, userId, role: "MEMBER", status,
+    });
+  };
+
+  reset();
+  addTasks(2);
+  {
+    const sim = await runSimulate({
+      type: "task_reassign", taskId: "task_1", assignedToUserId: "u_not_a_member",
+    });
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] task_reassign to a non-member returns 422", res.status, 422);
+    eq("[D-6] body carries invalid_member", (await readJson(res)).error?.code, "invalid_member");
+    check("[D-6] the task was not reassigned", __store.task[0].assignedToUserId == null);
+    eq("[D-6] no audit row written", __store.activityLog.length, 0);
+  }
+
+  reset();
+  addTasks(2);
+  addMember("u_member_a");
+  {
+    const sim = await runSimulate({
+      type: "task_reassign", taskId: "task_1", assignedToUserId: "u_member_a",
+    });
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] task_reassign to an active member succeeds", res.status, 200);
+    eq("[D-6] the task was reassigned", __store.task[0].assignedToUserId, "u_member_a");
+  }
+
+  reset();
+  addTasks(2);
+  addMember("u_invited", "org_a", "INVITED");
+  {
+    const sim = await runSimulate({
+      type: "task_reassign", taskId: "task_1", assignedToUserId: "u_invited",
+    });
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] a non-ACTIVE membership is rejected", res.status, 422);
+  }
+
+  reset();
+  addTasks(2);
+  addMember("u_other_org", "org_b");
+  {
+    const sim = await runSimulate({
+      type: "task_reassign", taskId: "task_1", assignedToUserId: "u_other_org",
+    });
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] a member of ANOTHER organization is rejected", res.status, 422);
+    check("[D-6] cross-tenant assignee did not land", __store.task[0].assignedToUserId == null);
+  }
+
+  reset();
+  addTasks(2);
+  {
+    const sim = await runSimulate({
+      type: "task_add", title: "Assigned to a stranger", assignedToUserId: "u_not_a_member",
+    });
+    const before = __store.task.length;
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] task_add with a non-member assignee returns 422", res.status, 422);
+    eq("[D-6] no task was created", __store.task.length, before);
+  }
+
+  reset();
+  addTasks(2);
+  {
+    // Unassigning must stay allowed — null needs no membership check.
+    const sim = await runSimulate({
+      type: "task_reassign", taskId: "task_1", assignedToUserId: null,
+    });
+    res = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq("[D-6] unassigning (null) is still allowed", res.status, 200);
   }
 
   reset();

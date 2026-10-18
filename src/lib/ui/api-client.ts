@@ -409,7 +409,11 @@ export type PolicyDraft = {
 /**
  * Full success response from POST /api/v1/automations/interpret.
  * On 422 the server returns { error: "unsupported", message }.
- * On 502 the server returns { error: "ai_error", message }.
+ * On 501 the server returns { error: "ai_not_configured", message } — the same
+ * shape the simulate route uses, meaning AI is switched off for this
+ * deployment rather than failing, so retrying will not help.
+ * On 502 the server returns { error: "ai_error", message } — a genuine
+ * upstream failure, which may succeed on retry.
  */
 export type InterpretResult = {
   draft: PolicyDraft;

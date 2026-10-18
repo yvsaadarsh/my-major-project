@@ -2,10 +2,10 @@
 type Row = Record<string, any>;
 export const __store: {
   project: Row[]; milestone: Row[]; task: Row[]; activityLog: Row[];
-  taskDependency: Row[]; automationRule: Row[];
+  taskDependency: Row[]; automationRule: Row[]; organizationMember: Row[];
 } = {
   project: [], milestone: [], task: [], activityLog: [], taskDependency: [],
-  automationRule: [],
+  automationRule: [], organizationMember: [],
 };
 
 type TableName = keyof typeof __store;
@@ -89,6 +89,7 @@ function snapshotStore(): Record<string, Row[]> {
     project: __store.project, milestone: __store.milestone, task: __store.task,
     activityLog: __store.activityLog, taskDependency: __store.taskDependency,
     automationRule: __store.automationRule,
+    organizationMember: __store.organizationMember,
   });
 }
 
@@ -137,6 +138,7 @@ export const prisma: any = {
   project: table("project"), milestone: table("milestone"), task: table("task"),
   activityLog: table("activityLog"), taskDependency: dependencyTable(),
   automationRule: table("automationRule"),
+  organizationMember: table("organizationMember"),
 
   /**
    * Interactive transaction with real rollback semantics over the in-memory

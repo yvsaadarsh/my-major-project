@@ -203,6 +203,14 @@ export default function AutomationsPage() {
             "This policy cannot be mapped to a supported trigger, condition, or action. " +
               "Try rephrasing it, or use the manual form below.",
           );
+        } else if (caught.status === 501) {
+          // Matches the simulation workspace's handling: the feature is
+          // switched off for this deployment, not failing intermittently, so
+          // retrying will not help.
+          setInterpretError(
+            "AI policy interpretation is not configured for this deployment. " +
+              "Use the manual form below.",
+          );
         } else if (caught.status === 502) {
           setInterpretError(
             "The AI service is temporarily unavailable. Please try again in a moment.",

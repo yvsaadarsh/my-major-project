@@ -26,7 +26,7 @@
 
 import { z } from "zod";
 
-import { ApiError, json, parseJson } from "@/lib/api/http";
+import { json, parseJson } from "@/lib/api/http";
 import { withTenantGuard, type RouteContext } from "@/lib/api/tenant-guard";
 import {
   callFast,
@@ -95,8 +95,18 @@ export const POST = withTenantGuard<{ projectId: string }>(
     const { projectId } = await context.params;
     const now = new Date();
 
+    // Shared shape with POST /api/v1/automations/interpret: an unconfigured
+    // deployment is a 501 with the `ai_not_configured` code on both AI routes,
+    // so the client can handle "feature switched off" once rather than per
+    // route. A genuine upstream failure remains a 502.
     if (!isAiConfigured()) {
-      return json({ error: "AI not configured" }, 501);
+      return json(
+        {
+          error: "ai_not_configured",
+          message: "AI features are not configured for this deployment.",
+        },
+        501,
+      );
     }
 
     // ── 1. Parse + validate request body ──────────────────────────────────────

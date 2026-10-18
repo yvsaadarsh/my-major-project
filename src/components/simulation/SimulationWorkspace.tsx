@@ -526,6 +526,16 @@ export function SimulationWorkspace({
   }
 
   async function applySimulation() {
+    // D-7: in-flight guard. The button is already `disabled` while applying,
+    // but a double activation can still land two calls before React re-renders
+    // (a fast double-click, or Enter plus a click). This is a UX guard against
+    // a wasted duplicate request only — it is NOT the concurrency boundary.
+    // Safety comes from the server: the snapshot fingerprint is re-checked
+    // inside a Serializable transaction, so a second apply is rejected with
+    // 409 even if the client sends one. That is the protection verified
+    // against real PostgreSQL, and this guard does not replace it.
+    if (applying) return;
+
     if (
       !simResult ||
       simResult.status !== "simulated" ||

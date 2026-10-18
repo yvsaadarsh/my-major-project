@@ -27,6 +27,7 @@
  *   400  — missing or invalid request body
  *   422  — policy is syntactically valid but cannot be mapped to supported
  *           triggers/actions/conditions (AI returned "unsupported")
+ *   501  — AI features are not configured for this deployment
  *   502  — AI call failed or returned malformed output
  */
 
@@ -34,6 +35,7 @@ import { NextRequest } from "next/server";
 
 import { json, parseJson } from "@/lib/api/http";
 import { withTenantGuard } from "@/lib/api/tenant-guard";
+import { isAiConfigured } from "@/lib/ai";
 import { interpretAutomationPolicy } from "@/lib/ai/automation-policy";
 import { prisma } from "@/lib/db";
 import type { AutomationRuleLike } from "@/lib/domain/automation-engine";
@@ -44,10 +46,28 @@ import { policyInterpretRequestSchema } from "@/lib/validators";
 export const POST = withTenantGuard(
   Permission.AutomationsManage,
   async (request: NextRequest, tenant) => {
-    // ── 1. Validate request body ────────────────────────────────────────────
+    // ── 1. Configuration gate ───────────────────────────────────────────────
+    //
+    // Previously a missing API key surfaced as a 502 `ai_error`, because the
+    // interpreter reports any `callFast` throw that way — which conflated "the
+    // feature is switched off for this deployment" with "the model call
+    // failed". The simulate route already distinguished the two; this gate
+    // makes both AI routes agree, and 502 now means a genuine upstream
+    // failure.
+    if (!isAiConfigured()) {
+      return json(
+        {
+          error: "ai_not_configured",
+          message: "AI features are not configured for this deployment.",
+        },
+        501,
+      );
+    }
+
+    // ── 2. Validate request body ────────────────────────────────────────────
     const { policy } = await parseJson(request, policyInterpretRequestSchema);
 
-    // ── 2. Call AI interpreter ──────────────────────────────────────────────
+    // ── 3. Call AI interpreter ──────────────────────────────────────────────
     // Leaf module — returns a typed result, never throws. organizationId is
     // not passed: the AI layer has no tenant context by design.
     const interpretation = await interpretAutomationPolicy(policy);
@@ -75,7 +95,7 @@ export const POST = withTenantGuard(
     // interpretation.status === "ok" — we have a validated draft rule
     const draft = interpretation.rule;
 
-    // ── 3. Load existing enabled rules for this tenant ──────────────────────
+    // ── 4. Load existing enabled rules for this tenant ──────────────────────
     // organizationId is always from the verified session — never from the
     // request body or AI output. Idempotency and isolation properties apply.
     const existingRules = await prisma.automationRule.findMany({
@@ -91,7 +111,7 @@ export const POST = withTenantGuard(
       },
     });
 
-    // ── 4. Run conflict detection ───────────────────────────────────────────
+    // ── 5. Run conflict detection ───────────────────────────────────────────
     // Pure, deterministic — no AI involved. The draft is given a sentinel id
     // so the conflict results reference it if needed (currently unused by
     // findConflicts since it compares draft against existing, not draft vs draft).
@@ -108,7 +128,7 @@ export const POST = withTenantGuard(
 
     const conflicts = findConflicts({ ...draft, id: "__draft__" }, ruleLikes);
 
-    // ── 5. Return draft + conflicts — nothing is written ───────────────────
+    // ── 6. Return draft + conflicts — nothing is written ───────────────────
     // The manager sees the draft and conflict warnings in the UI. If they
     // approve, the UI POSTs to /api/v1/automations with sourcePolicy set.
     return json(

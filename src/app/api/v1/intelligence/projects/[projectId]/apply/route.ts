@@ -31,6 +31,9 @@
  *   - All DB writes are tenant-scoped (organizationId filter on every query).
  *   - task_add validates that any milestone belongs to this project, not merely
  *     to this organization.
+ *   - task_add and task_reassign validate that any assignee is an active member
+ *     of this organization, so a non-member returns 422 invalid_member rather
+ *     than a raw foreign-key violation.
  *   - task.create uses tenant.user.id as createdByUserId — never a model value.
  */
 
@@ -51,6 +54,38 @@ type TxClient = Omit<
   typeof prisma,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
+
+/**
+ * D-6: assert the assignee is an active member of this organization.
+ *
+ * The composite FK on (assignedToUserId, organizationId) already makes a
+ * cross-tenant assignment impossible, so this is not the isolation boundary.
+ * What it fixes is the *response*: without it a non-member id reaches Postgres
+ * and fails as a raw constraint violation, which surfaces as a 500-class error
+ * rather than a validation result the client can act on.
+ *
+ * Status, code and message match `requireActiveMemberForTenant`, which the
+ * ordinary task-creation route already uses, so the contract is identical
+ * whichever path assigned the task. Read through the transaction client, and
+ * scoped by organizationId, so it cannot observe another tenant's membership.
+ */
+async function assertActiveMember(
+  tx: TxClient,
+  organizationId: string,
+  userId: string,
+): Promise<void> {
+  const count = await tx.organizationMember.count({
+    where: { organizationId, userId, status: "ACTIVE" },
+  });
+
+  if (count !== 1) {
+    throw new ApiError(
+      422,
+      "invalid_member",
+      "The selected user is not an active member of this organization.",
+    );
+  }
+}
 
 async function executeChange(
   tx: TxClient,
@@ -76,6 +111,11 @@ async function executeChange(
     }
 
     case "task_reassign": {
+      // null means "unassign", which needs no membership check.
+      if (change.assignedToUserId) {
+        await assertActiveMember(tx, organizationId, change.assignedToUserId);
+      }
+
       const result = await tx.task.updateMany({
         where: { id: change.taskId, organizationId, projectId },
         data: { assignedToUserId: change.assignedToUserId },
@@ -103,6 +143,10 @@ async function executeChange(
       // milestone from a sibling project would be accepted by the database.
       // This mirrors the guard in POST /projects/:projectId/tasks, including
       // its error code, rather than trusting an organization-only key.
+      if (change.assignedToUserId) {
+        await assertActiveMember(tx, organizationId, change.assignedToUserId);
+      }
+
       if (change.milestoneId) {
         const milestoneCount = await tx.milestone.count({
           where: {
