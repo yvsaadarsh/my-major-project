@@ -18,6 +18,7 @@ export const GET = withTenantGuard(Permission.AutomationsRead, async (_request, 
       trigger: true,
       condition: true,
       action: true,
+      sourcePolicy: true,
       runsThisMonth: true,
       lastRunAt: true,
       createdAt: true,
@@ -39,6 +40,8 @@ export const POST = withTenantGuard(
           ...input,
           createdByUserId: tenant.user.id,
           organizationId: tenant.tenantId,
+          // sourcePolicy is already spread from input (automationRuleCreateSchema)
+          // organizationId overrides any stray value from the spread — belt-and-braces.
         },
         select: {
           id: true,
@@ -48,6 +51,7 @@ export const POST = withTenantGuard(
           trigger: true,
           condition: true,
           action: true,
+          sourcePolicy: true,
           runsThisMonth: true,
           lastRunAt: true,
           createdAt: true,

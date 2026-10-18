@@ -20,6 +20,7 @@ const automationRuleSelect = {
   trigger: true,
   condition: true,
   action: true,
+  sourcePolicy: true,
   runsThisMonth: true,
   lastRunAt: true,
   createdAt: true,
@@ -63,6 +64,9 @@ export const PATCH = withTenantGuard<Params>(
           enabled: input.enabled,
           name: input.name,
           trigger: input.trigger,
+          // sourcePolicy: nullable — pass undefined when not provided so Prisma
+          // leaves the existing value untouched; null clears it explicitly.
+          sourcePolicy: input.sourcePolicy,
         },
       });
 

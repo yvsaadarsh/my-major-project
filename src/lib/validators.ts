@@ -104,6 +104,12 @@ export const automationRuleCreateSchema = z.object({
   enabled: z.boolean().default(true),
   name: z.string().trim().min(2).max(160),
   trigger: z.enum(["TASK_OVERDUE", "TASK_STATUS_CHANGED", "PROJECT_HEALTH_CHANGED"]),
+  /**
+   * The original natural-language policy text that produced this rule via
+   * the /automations/interpret endpoint. Stored for audit and re-interpretation
+   * purposes. Not required when creating rules directly.
+   */
+  sourcePolicy: z.string().trim().max(2000).optional(),
 });
 
 export const automationRuleUpdateSchema = z
@@ -114,10 +120,54 @@ export const automationRuleUpdateSchema = z
     enabled: z.boolean().optional(),
     name: z.string().trim().min(2).max(160).optional(),
     trigger: z.enum(["TASK_OVERDUE", "TASK_STATUS_CHANGED", "PROJECT_HEALTH_CHANGED"]).optional(),
+    /** Updated NL policy if the rule is re-interpreted. Nullable to allow clearing it. */
+    sourcePolicy: z.string().trim().max(2000).nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one automation field must be provided.",
   });
+
+// ─── Policy Interpretation — Feature 2 ──────────────────────────────────────
+//
+// These schemas guard the /automations/interpret endpoint. The request carries
+// the manager's natural-language policy; the response is a validated draft rule
+// (or a clear error) ready for human review before the manager chooses to save
+// it through the normal POST /automations flow.
+
+/** POST /api/v1/automations/interpret — request body */
+export const policyInterpretRequestSchema = z.object({
+  /**
+   * The manager's natural-language policy description.
+   * Example: "Notify the manager whenever a high-priority task becomes overdue."
+   */
+  policy: z.string().trim().min(1).max(2000),
+});
+
+/**
+ * The structured rule fields the AI returns — a subset of the create schema.
+ * `condition` may be an empty string ("") when the policy has no condition.
+ */
+export const interpretedRuleSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  trigger: z.enum(["TASK_OVERDUE", "TASK_STATUS_CHANGED", "PROJECT_HEALTH_CHANGED"]),
+  condition: z.string().max(500),
+  action: z.enum(["NOTIFY_MANAGER", "UPDATE_MILESTONE_PROGRESS", "WRITE_AUDIT_EVENT"]),
+});
+
+export type InterpretedRule = z.infer<typeof interpretedRuleSchema>;
+
+/**
+ * The raw JSON shape `AUTOMATION_PARSE_SYSTEM` returns.
+ * Two valid shapes: a valid rule or an explicit "unsupported" error.
+ * Everything else (network failure, malformed JSON, wrong keys) is caught
+ * upstream and surfaced as a 502 rather than a 422.
+ */
+export const aiRuleOutputSchema = z.union([
+  interpretedRuleSchema,
+  z.object({ error: z.literal("unsupported") }),
+]);
+
+export type AiRuleOutput = z.infer<typeof aiRuleOutputSchema>;
 
 // The notification types producers emit today (see the automation engine's
 // planned NOTIFY_MANAGER actions), plus the catch-all default.

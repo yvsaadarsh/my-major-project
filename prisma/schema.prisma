@@ -455,6 +455,12 @@ model AutomationRule {
   action          AutomationAction
   runsThisMonth   Int               @default(0) @map("runs_this_month")
   lastRunAt       DateTime?         @map("last_run_at")
+  /**
+   * The original natural-language policy text that produced this rule via
+   * POST /api/v1/automations/interpret. Stored for audit and re-interpretation.
+   * Null when the rule was created directly without the interpret endpoint.
+   */
+  sourcePolicy    String?           @map("source_policy") @db.VarChar(2000)
   createdByUserId String            @map("created_by_user_id")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
