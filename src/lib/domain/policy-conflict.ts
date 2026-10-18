@@ -102,7 +102,33 @@ export function findConflicts(
       continue;
     }
 
-    // ── 1. Exact duplicate ──────────────────────────────────────────────────
+    const ruleParsed = parseCondition(rule.condition);
+
+    // If either condition failed to parse we cannot reason about overlap —
+    // skip rather than produce a false positive.
+    if (draftParsed.error !== null || ruleParsed.error !== null) {
+      continue;
+    }
+
+    // ── 1. Both unconditional ───────────────────────────────────────────────
+    // Checked before the string-equality test so that two empty-condition
+    // rules are classified as CONFIRMED_UNCONDITIONAL (the semantically
+    // meaningful signal: "both always fire") rather than CONFIRMED_DUPLICATE.
+    // CONFIRMED_DUPLICATE is reserved for non-unconditional rules that happen
+    // to share the same condition string.
+    if (draftParsed.alwaysTrue && ruleParsed.alwaysTrue) {
+      results.push({
+        kind: "CONFIRMED_UNCONDITIONAL",
+        conflictingRuleId: rule.id,
+        message:
+          `Rule "${rule.id}" has the same trigger (${rule.trigger}) and ` +
+          `action (${rule.action}) with no conditions. Both rules would ` +
+          `always fire together on every matching event.`,
+      });
+      continue;
+    }
+
+    // ── 2. Exact duplicate ──────────────────────────────────────────────────
     // Normalise whitespace for the comparison so "status == DONE" and
     // "status  ==  DONE" are treated as identical.
     if (normalise(rule.condition) === normalise(draft.condition)) {
@@ -114,28 +140,7 @@ export function findConflicts(
           `action (${rule.action}), and condition. ` +
           `Saving this would create a redundant rule.`,
       });
-      continue; // already the strongest signal; skip overlap checks
-    }
-
-    const ruleParsed = parseCondition(rule.condition);
-
-    // If either condition failed to parse we cannot reason about overlap —
-    // skip rather than produce a false positive.
-    if (draftParsed.error !== null || ruleParsed.error !== null) {
-      continue;
-    }
-
-    // ── 2. Both unconditional ───────────────────────────────────────────────
-    if (draftParsed.alwaysTrue && ruleParsed.alwaysTrue) {
-      results.push({
-        kind: "CONFIRMED_UNCONDITIONAL",
-        conflictingRuleId: rule.id,
-        message:
-          `Rule "${rule.id}" has the same trigger (${rule.trigger}) and ` +
-          `action (${rule.action}) with no conditions. Both rules would ` +
-          `always fire together on every matching event.`,
-      });
-      continue;
+      continue; // already a strong signal; skip overlap check
     }
 
     // ── 3. Possible overlap — enumerate the condition value space ───────────
