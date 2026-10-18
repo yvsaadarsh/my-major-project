@@ -36,6 +36,7 @@ import { json, parseJson } from "@/lib/api/http";
 import { withTenantGuard } from "@/lib/api/tenant-guard";
 import { interpretAutomationPolicy } from "@/lib/ai/automation-policy";
 import { prisma } from "@/lib/db";
+import type { AutomationRuleLike } from "@/lib/domain/automation-engine";
 import { findConflicts } from "@/lib/domain/policy-conflict";
 import { Permission } from "@/lib/rbac";
 import { policyInterpretRequestSchema } from "@/lib/validators";
@@ -94,15 +95,18 @@ export const POST = withTenantGuard(
     // Pure, deterministic — no AI involved. The draft is given a sentinel id
     // so the conflict results reference it if needed (currently unused by
     // findConflicts since it compares draft against existing, not draft vs draft).
-    const conflicts = findConflicts(
-      { ...draft, id: "__draft__" },
-      existingRules.map((r) => ({
+    // Prisma's generated types resolve at runtime; cast to the domain type here
+    // so the pure conflict detector stays dependency-free from Prisma.
+    const ruleLikes: AutomationRuleLike[] = existingRules.map(
+      (r: { id: string; trigger: string; action: string; condition: string }) => ({
         id: r.id,
-        trigger: r.trigger as Parameters<typeof findConflicts>[1][number]["trigger"],
-        action: r.action as Parameters<typeof findConflicts>[1][number]["action"],
+        trigger: r.trigger as AutomationRuleLike["trigger"],
+        action: r.action as AutomationRuleLike["action"],
         condition: r.condition,
-      })),
+      }),
     );
+
+    const conflicts = findConflicts({ ...draft, id: "__draft__" }, ruleLikes);
 
     // ── 5. Return draft + conflicts — nothing is written ───────────────────
     // The manager sees the draft and conflict warnings in the UI. If they
