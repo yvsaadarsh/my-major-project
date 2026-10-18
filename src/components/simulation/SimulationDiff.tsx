@@ -100,16 +100,49 @@ export function SimulationResultPanel({
   }
 
   // ── Simulated branch ──────────────────────────────────────────────────────
-  const { diff, interpretedIntent, narration } = result;
+  const { changeDescription, diff, interpretedIntent, narration } = result;
 
   return (
     <div className="mt-4 space-y-3">
-      {/* Interpreted intent */}
+      {/*
+        The exact change to be applied, shown first and before any AI prose.
+        This is the server-validated payload — the same object sent to Apply —
+        so the user approves the mutation itself rather than a description of
+        it. The interpreted intent below is descriptive only.
+      */}
+      <div className="rounded-2xl border border-teal-300/25 bg-teal-300/[0.05] p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-300/80">
+          Change to apply
+        </p>
+        <p className="mt-1.5 text-sm font-semibold text-white">
+          {changeDescription.action}
+        </p>
+        {changeDescription.fields.length > 0 && (
+          <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            {changeDescription.fields.map((field) => (
+              <div
+                key={field.label}
+                className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5"
+              >
+                <dt className="text-xs text-slate-400">{field.label}</dt>
+                <dd className="font-mono text-xs text-slate-100">
+                  {field.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      {/* Interpreted intent — AI prose, descriptive only */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           Interpreted as
         </p>
         <p className="mt-1.5 text-sm text-slate-200">{interpretedIntent}</p>
+        <p className="mt-2 text-[11px] leading-5 text-slate-500">
+          AI description of your scenario. The change applied is the one above.
+        </p>
       </div>
 
       {/* Health comparison */}

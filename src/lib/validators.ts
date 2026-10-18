@@ -363,16 +363,23 @@ export const simulationRequestSchema = z.object({
   scenario: z.string().trim().min(1).max(2000),
   change: simulationChangeSchema,
   /**
-   * Concurrency token: project.updatedAt.toISOString() captured when the page
-   * loaded. The Apply endpoint rejects the write if the project has since been
-   * updated by someone else.
+   * Accepted for backward compatibility and ignored.
+   *
+   * The simulate response derives its own token from the server-read snapshot
+   * it simulated against, so a client-supplied value carries no authority and
+   * is never echoed back. Clients need not send it.
    */
-  snapshotToken: z.string().min(1).max(100),
+  snapshotToken: z.string().min(1).max(100).optional(),
 });
 
 /** POST /api/v1/intelligence/projects/:id/apply */
 export const applySimulationSchema = z.object({
   change: simulationChangeSchema,
-  /** Same token passed during simulate — verified against live project.updatedAt. */
+  /**
+   * The token returned by simulate — a fingerprint of the state the proposal
+   * was reviewed against. Apply recomputes it from the live database inside its
+   * transaction and rejects a mismatch with 409, which also makes each
+   * proposal single-use: applying it changes the state it fingerprints.
+   */
   snapshotToken: z.string().min(1).max(100),
 });

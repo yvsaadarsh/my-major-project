@@ -38,7 +38,12 @@ import {
 import { Permission } from "@/lib/rbac";
 import { simulationRequestSchema } from "@/lib/validators";
 import { loadProjectIntelligenceSnapshot } from "@/lib/intelligence/project-snapshot";
+import { snapshotTokenFromSnapshot } from "@/lib/intelligence/snapshot-token";
 import { runSimulation } from "@/lib/domain/simulation/engine";
+import {
+  describeChange,
+  summarizeChange,
+} from "@/lib/domain/simulation/describe-change";
 
 // ─── Call 1 output schema (model output is untrusted; validate before use) ───
 
@@ -95,8 +100,12 @@ export const POST = withTenantGuard<{ projectId: string }>(
     }
 
     // ── 1. Parse + validate request body ──────────────────────────────────────
+    //
+    // Any `snapshotToken` the client sends is deliberately ignored. The token
+    // this route returns is derived server-side from the snapshot below, so a
+    // client cannot claim a state it did not observe.
     const body = await parseJson(request, simulationRequestSchema);
-    const { scenario, change, snapshotToken } = body;
+    const { scenario, change } = body;
 
     // ── 2. Load tenant-scoped snapshot (404 for wrong-tenant project) ─────────
     const snapshot = await loadProjectIntelligenceSnapshot(
@@ -110,9 +119,15 @@ export const POST = withTenantGuard<{ projectId: string }>(
     // Haiku is fast enough to sit on the request path. The model output is
     // Zod-validated before any logic branches on it, so a hallucinated field
     // cannot affect downstream behaviour.
+    // The structured change is included, not just its type: without the target
+    // identifiers the model could describe a different task than the one the
+    // engine computes the diff from and Apply writes, and the user would approve
+    // a mutation after reading a sentence about something else.
     const call1UserMessage = JSON.stringify({
       scenario,
       changeType: change.type,
+      change: describeChange(change),
+      changeSummary: summarizeChange(change),
       projectContext: {
         name: snapshot.project.name,
         healthScore: snapshot.health.score,
@@ -207,14 +222,25 @@ export const POST = withTenantGuard<{ projectId: string }>(
 
     // ── 6. Return result ──────────────────────────────────────────────────────
     //
-    // snapshotToken is echoed back so the client can pass it to Apply without
-    // re-reading the project. The Apply endpoint verifies it against live DB.
+    // snapshotToken is a fingerprint of `snapshot` — the exact state the diff
+    // was computed from — so the relationship between the simulated state and
+    // the token is total: equal tokens mean nothing the simulation reads has
+    // changed. Apply recomputes it from the live database inside its
+    // transaction and rejects a mismatch.
+    //
+    // `change` is the Zod-validated structured change, echoed so the review
+    // panel shows what the server actually parsed (schema defaults included)
+    // and the client sends that same object back to Apply. The narration and
+    // interpreted intent remain descriptive only — neither determines which
+    // mutation executes.
     return json({
       status: "simulated",
       interpretedIntent,
+      change,
+      changeDescription: describeChange(change),
       diff,
       narration,
-      snapshotToken,
+      snapshotToken: snapshotTokenFromSnapshot(snapshot),
     });
   },
 );

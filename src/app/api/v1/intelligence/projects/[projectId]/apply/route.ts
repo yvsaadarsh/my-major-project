@@ -10,18 +10,27 @@
  *   2. Parse + Zod-validate the request body.
  *   3. Re-fetch the project through requireProjectForTenant — 404 if the
  *      project was deleted or belongs to another tenant since simulation.
- *   4. Stale-write detection: reject if project.updatedAt has changed since
- *      the simulation (snapshotToken mismatch).
- *   5. Execute the change transactionally in Prisma.
- *   6. Record an ActivityLog audit entry in the same transaction.
- *   7. Return 200 with the updated project.updatedAt (the new snapshot token).
+ *   4. Open a Serializable transaction and, inside it:
+ *      a. Recompute the snapshot fingerprint from the live rows and reject a
+ *         mismatch with 409 before mutating anything.
+ *      b. Execute the change.
+ *      c. Record an ActivityLog audit entry.
+ *      d. Recompute the fingerprint and return it as the new token.
  *
  * P0 rules enforced:
  *   - This is the ONLY place a simulation result ever writes to the database.
  *   - Model output is never consulted here. The change schema is re-validated
  *     from the client's payload; the model had no path to mutate it.
- *   - snapshotToken is project.updatedAt.toISOString(). Mismatch → 409.
+ *   - snapshotToken is a content fingerprint of the simulation-relevant state
+ *     (see @/lib/domain/simulation/snapshot-token for why project.updatedAt
+ *     cannot serve this purpose). Mismatch → 409.
+ *   - The freshness check runs inside the transaction, through the transaction
+ *     client, so no Apply can commit between the check and the write.
+ *   - Each proposal is single-use: applying it changes the state it
+ *     fingerprints, so a replay is rejected rather than duplicating rows.
  *   - All DB writes are tenant-scoped (organizationId filter on every query).
+ *   - task_add validates that any milestone belongs to this project, not merely
+ *     to this organization.
  *   - task.create uses tenant.user.id as createdByUserId — never a model value.
  */
 
@@ -30,6 +39,7 @@ import { withTenantGuard, type RouteContext } from "@/lib/api/tenant-guard";
 import { Permission } from "@/lib/rbac";
 import { applySimulationSchema, type SimulationChange } from "@/lib/validators";
 import { requireProjectForTenant } from "@/lib/tenant/queries";
+import { readSnapshotToken } from "@/lib/intelligence/snapshot-token";
 import { prisma } from "@/lib/db";
 
 // ─── Change executor — one function per change type ───────────────────────────
@@ -88,6 +98,28 @@ async function executeChange(
     }
 
     case "task_add": {
+      // D-4: the composite FK on (milestoneId, organizationId) proves the
+      // milestone belongs to this *organization*, not to this *project*, so a
+      // milestone from a sibling project would be accepted by the database.
+      // This mirrors the guard in POST /projects/:projectId/tasks, including
+      // its error code, rather than trusting an organization-only key.
+      if (change.milestoneId) {
+        const milestoneCount = await tx.milestone.count({
+          where: {
+            id: change.milestoneId,
+            organizationId,
+            projectId,
+          },
+        });
+        if (milestoneCount !== 1) {
+          throw new ApiError(
+            422,
+            "invalid_milestone",
+            "The milestone must belong to this project and organization.",
+          );
+        }
+      }
+
       await tx.task.create({
         data: {
           organizationId,
@@ -173,6 +205,35 @@ async function executeChange(
   }
 }
 
+// ─── Concurrency control ──────────────────────────────────────────────────────
+
+/**
+ * Raised inside the transaction when the live fingerprint no longer matches the
+ * one the proposal was reviewed against. Throwing (rather than returning) is
+ * what rolls the transaction back before any mutation is committed.
+ */
+class StaleSnapshotError extends Error {
+  constructor(readonly currentToken: string) {
+    super("snapshot_stale");
+    this.name = "StaleSnapshotError";
+  }
+}
+
+/**
+ * True for Prisma's write-conflict / deadlock error.
+ *
+ * Under `Serializable`, Postgres aborts one of two transactions that read and
+ * then wrote the same rows. Prisma surfaces that as `P2034`; the underlying
+ * SQLSTATEs are 40001 (serialization failure) and 40P01 (deadlock). Checked
+ * structurally so this route need not import the generated client, whose types
+ * are unavailable in some environments.
+ */
+function isWriteConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "P2034" || code === "40001" || code === "40P01";
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export const POST = withTenantGuard<{ projectId: string }>(
@@ -187,58 +248,95 @@ export const POST = withTenantGuard<{ projectId: string }>(
     const { change, snapshotToken } = await parseJson(request, applySimulationSchema);
 
     // ── 2. Re-fetch project — 404 if deleted or wrong tenant ─────────────────
-    const project = await requireProjectForTenant(organizationId, projectId);
+    //
+    // Kept as an explicit gate so a wrong-tenant or deleted project fails with
+    // 404 before any transaction is opened.
+    await requireProjectForTenant(organizationId, projectId);
 
-    // ── 3. Stale-write detection ──────────────────────────────────────────────
+    // ── 3+4. Verify freshness and execute, in one serializable transaction ───
     //
-    // The simulation captured project.updatedAt as its snapshotToken. If the
-    // project has been modified since (by another user, or another Apply),
-    // the token won't match and we reject with 409 Conflict.
+    // Both halves must happen inside the same transaction, and the freshness
+    // check must read through the transaction client. Checking first and then
+    // opening a transaction leaves a window in which another Apply commits
+    // between the two, which is the race the previous implementation had.
     //
-    // This is a first-writer-wins strategy: the second Apply must re-simulate
-    // from the current state before it can apply.
-    const liveToken = project.updatedAt.toISOString();
-    if (liveToken !== snapshotToken) {
-      return json(
-        {
-          error: "snapshot_stale",
-          message:
-            "The project was updated after this simulation ran. Re-run the simulation from the current project state before applying.",
-          currentToken: liveToken,
+    // `Serializable` is what closes that window. The check reads the task,
+    // milestone and dependency rows and then writes them; if a competing Apply
+    // does the same concurrently, Postgres aborts one with a write conflict
+    // rather than letting both commit. That is reported as 409, exactly like a
+    // stale token, because the user's remedy is identical: re-simulate.
+    //
+    // Single-use falls out of the same mechanism. The fingerprint covers the
+    // state each change type mutates, so a committed Apply necessarily changes
+    // it — replaying the same proposal recomputes a different live token and is
+    // rejected. That is what prevents duplicate tasks and duplicate dependency
+    // edges on a repeated request.
+    let newSnapshotToken: string;
+
+    try {
+      newSnapshotToken = await prisma.$transaction(
+        async (tx: TxClient) => {
+          const liveToken = await readSnapshotToken(tx, organizationId, projectId);
+
+          if (liveToken !== snapshotToken) {
+            throw new StaleSnapshotError(liveToken);
+          }
+
+          await executeChange(tx, change, organizationId, projectId, actorUserId, now);
+
+          // Audit trail — every Apply is recorded regardless of change type.
+          await tx.activityLog.create({
+            data: {
+              organizationId,
+              actorUserId,
+              entityType: "project",
+              entityId: projectId,
+              action: "project.simulation_applied",
+              metadata: {
+                changeType: change.type,
+                snapshotToken,
+              },
+            },
+          });
+
+          // Recomputed from the post-change state inside the same transaction,
+          // so the caller receives a token for exactly what was committed.
+          return readSnapshotToken(tx, organizationId, projectId);
         },
-        409,
+        { isolationLevel: "Serializable" },
       );
+    } catch (error) {
+      if (error instanceof StaleSnapshotError) {
+        return json(
+          {
+            error: "snapshot_stale",
+            message:
+              "The project changed after this simulation ran. Re-run the simulation from the current project state before applying.",
+            currentToken: error.currentToken,
+          },
+          409,
+        );
+      }
+
+      if (isWriteConflict(error)) {
+        return json(
+          {
+            error: "snapshot_stale",
+            message:
+              "Another change was applied to this project at the same time. Re-run the simulation from the current project state before applying.",
+          },
+          409,
+        );
+      }
+
+      throw error;
     }
 
-    // ── 4. Execute + audit (single transaction) ───────────────────────────────
-    await prisma.$transaction(async (tx: TxClient) => {
-      await executeChange(tx, change, organizationId, projectId, actorUserId, now);
-
-      // Audit trail — every Apply is recorded regardless of change type.
-      await tx.activityLog.create({
-        data: {
-          organizationId,
-          actorUserId,
-          entityType: "project",
-          entityId: projectId,
-          action: "project.simulation_applied",
-          metadata: {
-            changeType: change.type,
-            snapshotToken,
-          },
-        },
-      });
-    });
-
-    // ── 5. Return the new project state ──────────────────────────────────────
-    //
-    // Re-fetch to get the new updatedAt (Prisma sets it after the transaction).
-    const updated = await requireProjectForTenant(organizationId, projectId);
-
+    // ── 5. Return the new fingerprint ────────────────────────────────────────
     return json({
       applied: true,
       changeType: change.type,
-      newSnapshotToken: updated.updatedAt.toISOString(),
+      newSnapshotToken,
     });
   },
 );

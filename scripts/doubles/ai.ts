@@ -22,11 +22,18 @@ export const __ai: {
   failStreamAt: number | null;
   lastSystem: string | null;
   lastUser: string | null;
+  /**
+   * Every call in order, so a route that makes more than one model call can be
+   * asserted per call. `lastSystem`/`lastUser` only ever describe the final
+   * call, which is misleading for the simulate route: its interpretation call
+   * is followed by a narration call that would overwrite them.
+   */
+  calls: Array<{ system: string; user: string }>;
   /** Set when the generator is returned early — proves upstream cancellation. */
   cancelled: boolean;
 } = {
   configured: true, fastReply: "{}", streamChunks: ["ok"], failFast: null,
-  failStreamAt: null, lastSystem: null, lastUser: null, cancelled: false,
+  failStreamAt: null, lastSystem: null, lastUser: null, calls: [], cancelled: false,
 };
 
 export function isAiConfigured(): boolean {
@@ -36,6 +43,7 @@ export function isAiConfigured(): boolean {
 export async function callFast(system: string, user: string): Promise<string> {
   __ai.lastSystem = system;
   __ai.lastUser = user;
+  __ai.calls.push({ system, user });
   if (__ai.failFast) throw __ai.failFast;
   return __ai.fastReply;
 }
@@ -43,6 +51,7 @@ export async function callFast(system: string, user: string): Promise<string> {
 export async function* streamQuality(system: string, user: string): AsyncIterable<string> {
   __ai.lastSystem = system;
   __ai.lastUser = user;
+  __ai.calls.push({ system, user });
   __ai.cancelled = false;
   try {
     for (let i = 0; i < __ai.streamChunks.length; i++) {

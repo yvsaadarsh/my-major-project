@@ -10,7 +10,6 @@ import {
   apiRequest,
   ClientApiError,
   type ApplyResult,
-  type Project,
   type SimulateResult,
   type SimulationChange,
 } from "@/lib/ui/api-client";
@@ -490,31 +489,25 @@ export function SimulationWorkspace({
     setApplyError(null);
     setStaleError(null);
 
-    // Fetch the project to obtain its current `updatedAt` — this is the
-    // snapshot token. The simulate endpoint echoes it back; Apply then
-    // validates it against the live DB value to detect concurrent edits.
-    let snapshotToken: string;
-    try {
-      const project = await apiRequest<Project>(`/api/v1/projects/${projectId}`);
-      snapshotToken = project.updatedAt;
-    } catch {
-      setSimError(
-        "Could not load the project snapshot. Refresh the page and try again.",
-      );
-      setSimulating(false);
-      return;
-    }
-
+    // No snapshot token is sent: the simulate endpoint derives it server-side
+    // from the state it actually simulated, so the client has nothing
+    // authoritative to contribute and the extra project fetch this used to do
+    // is gone.
     try {
       const result = await apiRequest<SimulateResult>(
         `/api/v1/intelligence/projects/${projectId}/simulate`,
         {
           method: "POST",
-          body: { scenario: scenario.trim(), change, snapshotToken },
+          body: { scenario: scenario.trim(), change },
         },
       );
       setSimResult(result);
-      setPendingChange(change);
+      // Hold the change the *server* validated, not the locally built one, so
+      // the object sent to Apply is the one shown in the review panel —
+      // including any schema defaults the server filled in.
+      setPendingChange(
+        result.status === "simulated" ? result.change : null,
+      );
     } catch (err) {
       if (err instanceof ClientApiError) {
         if (err.status === 501) {

@@ -325,12 +325,38 @@ export type SimulationDiff = {
  * status === "needs_clarification" means the AI needs more detail from the
  * user before it can map the scenario to a concrete change.
  */
+/** One labelled parameter of the change, as the server described it. */
+export type ChangeField = { label: string; value: string };
+
+/**
+ * The server's rendering of the structured change.
+ *
+ * Shown in the review panel so the user approves the validated payload rather
+ * than only the AI's prose. It is descriptive: the mutation is determined by
+ * `change`, which Apply re-validates independently.
+ */
+export type ChangeDescription = {
+  action: string;
+  fields: ChangeField[];
+};
+
 export type SimulateResult =
   | {
       status: "simulated";
       interpretedIntent: string;
+      /**
+       * The Zod-validated change the server simulated, including any schema
+       * defaults it filled in. Send this object back to Apply so what is
+       * applied is exactly what was reviewed.
+       */
+      change: SimulationChange;
+      changeDescription: ChangeDescription;
       diff: SimulationDiff;
       narration: string;
+      /**
+       * Fingerprint of the state the diff was computed from — derived by the
+       * server, never from anything the client supplied.
+       */
       snapshotToken: string;
     }
   | {
