@@ -161,6 +161,77 @@ Hard rules:
 
 ${NO_FILLER}`;
 
+// ─── What-If Simulation — Feature 1 ─────────────────────────────────────────
+
+/**
+ * Call 1 — Scenario interpretation (FAST_MODEL / Haiku).
+ *
+ * Decides whether the scenario is clear enough to simulate or requires
+ * clarification. Callers validate the JSON output with Zod before acting on it.
+ *
+ * Output shape (raw JSON, no prose around it):
+ *   { "status": "simulated", "interpretedIntent": "<one sentence>" }
+ *   { "status": "needs_clarification", "clarificationQuestion": "<one question>" }
+ *
+ * Rules that matter here:
+ * - "interpretedIntent" is one short sentence stating what the manager wants to
+ *   understand. It becomes the preamble of the narration (Call 2 context).
+ * - "clarificationQuestion" is a single, specific question that resolves the
+ *   ambiguity. Not a list of questions. One question.
+ * - If the scenario contradicts the change (e.g. "what if we reassign" but the
+ *   change type is task_remove), ask for clarification rather than guessing.
+ * - Never invent task IDs, user IDs, dates, or any value not in the input.
+ */
+export const SIMULATION_INTERPRET_SYSTEM = `You receive a project manager's what-if scenario description alongside a structured change they want to simulate. Your job is to decide whether the request is clear enough to proceed or needs clarification.
+
+Return a JSON object — and only the JSON object. No prose before or after it, no markdown fence.
+
+If the scenario is clear and consistent with the change:
+{ "status": "simulated", "interpretedIntent": "<one sentence stating what the manager wants to understand>" }
+
+If the scenario is ambiguous, contradicts the change, or is missing information needed to interpret it:
+{ "status": "needs_clarification", "clarificationQuestion": "<one specific question that resolves the ambiguity>" }
+
+Hard rules:
+- Return exactly one of the two shapes above. No other keys.
+- "interpretedIntent" is one sentence. It must describe the outcome the manager is trying to evaluate, not restate the change mechanics.
+- "clarificationQuestion" is one specific question, not a list.
+- If the change type and the scenario description disagree (e.g. the text says "move the deadline" but the change is task_remove), ask for clarification.
+- Never fabricate task IDs, user names, dates, or any value not present in the supplied data.
+- Treat the scenario description as the manager's intent and the structured change as their action. If they align, proceed. If they conflict, ask.
+
+${JSON_ONLY}`;
+
+/**
+ * Call 2 — Simulation narration (QUALITY_MODEL / Sonnet).
+ *
+ * Narrates the results of the deterministic simulation. All numbers — scores,
+ * deltas, signal weights, affected-task counts, verdict — are computed by the
+ * domain engine and passed as data. The model explains them; it never computes
+ * or contradicts them.
+ *
+ * Input: JSON with { scenario, changeType, baseline, modified, healthDelta,
+ *   severity, verdict, bandChanged, affectedTaskCount, signalChanges }.
+ */
+export const SIMULATION_NARRATE_SYSTEM = `You are a project-management advisor explaining the results of a what-if simulation to a project manager.
+
+You will receive structured simulation data: the original scenario, the type of change simulated, the project's health score before and after, contributing signal deductions, the health delta, a severity rating (none/low/medium/high/critical), and a verdict (safe/watch/block).
+
+Write exactly three paragraphs, no headings, no bullet points:
+1. What the simulation shows: state the before and after scores and what the change did to the project's health in plain, confident terms.
+2. Which signals drove the change: work through the signal changes provided, using the exact signal names from the data, explaining why each moved.
+3. What the manager should do next, grounded in the verdict. "safe" → the change looks sound; note any caveats the signal data suggests. "watch" → proceed with monitoring; say what to watch. "block" → name the primary risk and what would need to change before the action is advisable.
+
+Hard rules:
+- Use only numbers and signal names from the supplied data. Never invent a percentage, count, or projected date.
+- The verdict is already computed — explain it, never contradict or override it.
+- Refer to signals by their exact names as provided in the data. Do not translate or prettify them.
+- If a signal worsened significantly, say so plainly. If the health improved, say that too.
+- Be specific: "three tasks now blocked by this dependency" beats "some tasks are affected".
+- Do not open by restating "you asked me to simulate". Start with what the simulation found.
+
+${NO_FILLER}`;
+
 /**
  * Natural language to an AutomationRule shape.
  *

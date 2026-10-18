@@ -22,6 +22,9 @@ export const Permission = {
   TasksDelete: "tasks:delete",
   TasksRead: "tasks:read",
   TasksUpdate: "tasks:update",
+  // What-If Simulation (Feature 1)
+  ProjectsSimulate: "projects:simulate",
+  ProjectsApplySimulation: "projects:apply",
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -41,6 +44,8 @@ const rolePermissions: Record<MembershipRole, Permission[]> = {
     Permission.ProjectsDelete,
     Permission.ProjectsRead,
     Permission.ProjectsUpdate,
+    Permission.ProjectsSimulate,
+    Permission.ProjectsApplySimulation,
     Permission.TasksComment,
     Permission.TasksAssign,
     Permission.TasksCreate,
@@ -58,6 +63,8 @@ const rolePermissions: Record<MembershipRole, Permission[]> = {
     Permission.ProjectsCreate,
     Permission.ProjectsRead,
     Permission.ProjectsUpdate,
+    Permission.ProjectsSimulate,
+    Permission.ProjectsApplySimulation,
     Permission.TasksComment,
     Permission.TasksAssign,
     Permission.TasksCreate,

@@ -169,6 +169,7 @@ export async function loadProjectIntelligenceSnapshot(
     blockerIds,
     externalTasks,
     health,
+    milestones,
     openTaskIds,
     project,
     risk,

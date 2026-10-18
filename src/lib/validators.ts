@@ -226,3 +226,103 @@ export const dependencyCreateSchema = z
   .refine((value) => value.sourceTaskId !== value.targetTaskId, {
     message: "A task cannot depend on itself.",
   });
+
+// ─── What-If Simulation — Feature 1 ─────────────────────────────────────────
+//
+// Eight discriminated-union change types. Each union member carries exactly the
+// fields its change handler needs — no extra surface for injection.
+//
+// The `snapshotToken` (project.updatedAt ISO string) travels with every request
+// so the Apply endpoint can reject a stale simulation cheaply, without a
+// separate version-fetch round-trip.
+
+const taskStatusChangeSchema = z.object({
+  type: z.literal("task_status"),
+  taskId: z.string().min(1).max(40),
+  status: z.enum(["TODO", "IN_PROGRESS", "BLOCKED", "DONE"]),
+});
+
+const taskReassignChangeSchema = z.object({
+  type: z.literal("task_reassign"),
+  taskId: z.string().min(1).max(40),
+  /** null → unassign */
+  assignedToUserId: z.string().max(40).nullable(),
+});
+
+const taskDueDateChangeSchema = z.object({
+  type: z.literal("task_due_date"),
+  taskId: z.string().min(1).max(40),
+  /** null → remove due date */
+  dueDate: z.string().datetime().nullable(),
+});
+
+const taskAddChangeSchema = z.object({
+  type: z.literal("task_add"),
+  title: z.string().trim().min(2).max(180),
+  status: z.enum(["TODO", "IN_PROGRESS", "BLOCKED", "DONE"]).default("TODO"),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
+  dueDate: z.string().datetime().nullable().optional(),
+  assignedToUserId: z.string().max(40).nullable().optional(),
+  milestoneId: z.string().max(40).nullable().optional(),
+});
+
+const taskRemoveChangeSchema = z.object({
+  type: z.literal("task_remove"),
+  taskId: z.string().min(1).max(40),
+});
+
+const milestoneDateChangeSchema = z.object({
+  type: z.literal("milestone_date"),
+  milestoneId: z.string().min(1).max(40),
+  dueDate: z.string().datetime(),
+});
+
+const dependencyAddChangeSchema = z
+  .object({
+    type: z.literal("dependency_add"),
+    sourceTaskId: z.string().min(1).max(40),
+    targetTaskId: z.string().min(1).max(40),
+    depType: z.enum(["BLOCKS", "DEPENDS_ON", "RELATED_TO"]).default("BLOCKS"),
+  })
+  .refine((v) => v.sourceTaskId !== v.targetTaskId, {
+    message: "A task cannot depend on itself.",
+  });
+
+const dependencyRemoveChangeSchema = z.object({
+  type: z.literal("dependency_remove"),
+  dependencyId: z.string().min(1).max(40),
+});
+
+/** Discriminated union over all 8 supported change types. */
+export const simulationChangeSchema = z.discriminatedUnion("type", [
+  taskStatusChangeSchema,
+  taskReassignChangeSchema,
+  taskDueDateChangeSchema,
+  taskAddChangeSchema,
+  taskRemoveChangeSchema,
+  milestoneDateChangeSchema,
+  dependencyAddChangeSchema,
+  dependencyRemoveChangeSchema,
+]);
+
+export type SimulationChange = z.infer<typeof simulationChangeSchema>;
+
+/** POST /api/v1/intelligence/projects/:id/simulate */
+export const simulationRequestSchema = z.object({
+  /** Free-text description of the what-if scenario from the user. */
+  scenario: z.string().trim().min(1).max(2000),
+  change: simulationChangeSchema,
+  /**
+   * Concurrency token: project.updatedAt.toISOString() captured when the page
+   * loaded. The Apply endpoint rejects the write if the project has since been
+   * updated by someone else.
+   */
+  snapshotToken: z.string().min(1).max(100),
+});
+
+/** POST /api/v1/intelligence/projects/:id/apply */
+export const applySimulationSchema = z.object({
+  change: simulationChangeSchema,
+  /** Same token passed during simulate — verified against live project.updatedAt. */
+  snapshotToken: z.string().min(1).max(100),
+});
