@@ -218,6 +218,11 @@ export type AutomationRule = {
   lastRunAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The original natural-language policy text that produced this rule via the
+   * /automations/interpret endpoint. Null when the rule was created directly.
+   */
+  sourcePolicy: string | null;
 };
 
 export type AutomationRunStatus = "SUCCESS" | "FAILED" | "SKIPPED";
@@ -238,6 +243,153 @@ export type AutomationRunSummary = {
   fired: number;
   skipped: number;
   failed: number;
+};
+
+// ─── What-If Simulation types — Feature 1 ────────────────────────────────────
+//
+// TypeScript equivalents of the Zod schemas in src/lib/validators.ts and the
+// result types from src/lib/domain/simulation/engine.ts. Pure types — no Zod
+// dependency — so they are safe to import from client components.
+
+/** Discriminated union over all 8 supported simulation change types. */
+export type SimulationChange =
+  | {
+      type: "task_status";
+      taskId: string;
+      status: "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+    }
+  | {
+      type: "task_reassign";
+      taskId: string;
+      /** null → unassign */
+      assignedToUserId: string | null;
+    }
+  | {
+      type: "task_due_date";
+      taskId: string;
+      /** null → remove due date */
+      dueDate: string | null;
+    }
+  | {
+      type: "task_add";
+      title: string;
+      status: "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+      priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+      dueDate?: string | null;
+      assignedToUserId?: string | null;
+      milestoneId?: string | null;
+    }
+  | { type: "task_remove"; taskId: string }
+  | { type: "milestone_date"; milestoneId: string; dueDate: string }
+  | {
+      type: "dependency_add";
+      sourceTaskId: string;
+      targetTaskId: string;
+      depType: "BLOCKS" | "DEPENDS_ON" | "RELATED_TO";
+    }
+  | { type: "dependency_remove"; dependencyId: string };
+
+/** Project health band — matches HealthBand in src/lib/domain/project-intelligence.ts */
+export type HealthBand = "Healthy" | "Watch" | "At risk" | "Critical";
+
+/** Per-signal health contribution change between baseline and modified states. */
+export type SignalChange = {
+  name: string;
+  before: number;
+  after: number;
+  /** Positive = improvement (fewer points deducted); negative = degradation. */
+  delta: number;
+};
+
+export type SimulationSeverity = "none" | "low" | "medium" | "high" | "critical";
+export type SimulationVerdict = "safe" | "watch" | "block";
+
+/**
+ * Full diff produced by the simulation engine.
+ * Returned inside SimulateResult when status === "simulated".
+ */
+export type SimulationDiff = {
+  baseline: { score: number; band: HealthBand };
+  modified: { score: number; band: HealthBand };
+  /** Positive = improvement; negative = degradation. */
+  healthDelta: number;
+  severity: SimulationSeverity;
+  verdict: SimulationVerdict;
+  bandChanged: boolean;
+  affectedTaskCount: number;
+  signalChanges: SignalChange[];
+};
+
+/**
+ * Success response from POST /api/v1/intelligence/projects/:id/simulate.
+ * status === "needs_clarification" means the AI needs more detail from the
+ * user before it can map the scenario to a concrete change.
+ */
+export type SimulateResult =
+  | {
+      status: "simulated";
+      interpretedIntent: string;
+      diff: SimulationDiff;
+      narration: string;
+      snapshotToken: string;
+    }
+  | {
+      status: "needs_clarification";
+      clarificationQuestion: string;
+    };
+
+/**
+ * Success response from POST /api/v1/intelligence/projects/:id/apply.
+ * On a 409 the server returns { error: "snapshot_stale", message, currentToken }.
+ */
+export type ApplyResult = {
+  applied: true;
+  changeType: string;
+  newSnapshotToken: string;
+};
+
+// ─── Policy Interpretation types — Feature 2 ─────────────────────────────────
+//
+// TypeScript equivalents of the types in src/lib/domain/policy-conflict.ts and
+// the response shape from src/app/api/v1/automations/interpret/route.ts.
+
+/**
+ * Conflict severity classification returned by the policy conflict detector.
+ * Matches ConflictKind in src/lib/domain/policy-conflict.ts exactly.
+ */
+export type ConflictKind =
+  | "CONFIRMED_DUPLICATE"     // same trigger, action, and condition — redundant rule
+  | "CONFIRMED_UNCONDITIONAL" // same trigger and action, both always fire
+  | "POSSIBLE_OVERLAP";       // same trigger and action, conditions intersect on some inputs
+
+/** A single conflict warning returned by the /automations/interpret endpoint. */
+export type PolicyConflict = {
+  kind: ConflictKind;
+  conflictingRuleId: string;
+  message: string;
+};
+
+/**
+ * The structured draft rule extracted from the manager's natural-language policy.
+ * Matches the `draft` field in the /automations/interpret response.
+ */
+export type PolicyDraft = {
+  name: string;
+  trigger: AutomationTrigger;
+  condition: string;
+  action: AutomationAction;
+};
+
+/**
+ * Full success response from POST /api/v1/automations/interpret.
+ * On 422 the server returns { error: "unsupported", message }.
+ * On 502 the server returns { error: "ai_error", message }.
+ */
+export type InterpretResult = {
+  draft: PolicyDraft;
+  conflicts: PolicyConflict[];
+  /** Echo of the original NL policy — pass as sourcePolicy when saving. */
+  sourcePolicy: string;
 };
 
 type ApiErrorBody = {

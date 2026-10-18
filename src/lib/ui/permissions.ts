@@ -13,6 +13,8 @@ export type Permission =
   | "projects:delete"
   | "projects:read"
   | "projects:update"
+  | "projects:apply"
+  | "projects:simulate"
   | "tasks:assign"
   | "tasks:comment"
   | "tasks:create"
@@ -31,9 +33,11 @@ const rolePermissions: Record<Role, Permission[]> = {
     "members:read",
     "notifications:read",
     "organization:update",
+    "projects:apply",
     "projects:create",
     "projects:delete",
     "projects:read",
+    "projects:simulate",
     "projects:update",
     "tasks:assign",
     "tasks:comment",
@@ -49,8 +53,10 @@ const rolePermissions: Record<Role, Permission[]> = {
     "dashboard:read",
     "members:read",
     "notifications:read",
+    "projects:apply",
     "projects:create",
     "projects:read",
+    "projects:simulate",
     "projects:update",
     "tasks:assign",
     "tasks:comment",
