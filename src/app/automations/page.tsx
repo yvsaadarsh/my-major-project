@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Play, Plus, Sparkles, Trash2, Zap } from "lucide-react";
+import { AlertTriangle, Play, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 
 import { AppShell, RoleNotice } from "@/components/app-shell";
 import { PolicyDraftCard } from "@/components/automations/PolicyDraftCard";
@@ -40,7 +40,10 @@ const emptyForm = {
   trigger: "TASK_STATUS_CHANGED" as AutomationTrigger,
   condition: "status == DONE",
   action: "UPDATE_MILESTONE_PROGRESS" as AutomationAction,
-  enabled: true,
+  // D-8: the manual form also starts as a disabled draft, so neither creation
+  // path produces a live rule without the author ticking the toggle below.
+  // The toggle itself is unchanged and still works in both directions.
+  enabled: false,
 };
 
 // ── Policy input max length matches backend policyInterpretRequestSchema ──
@@ -67,6 +70,8 @@ export default function AutomationsPage() {
   const [interpretError, setInterpretError] = useState<string | null>(null);
   const [draft, setDraft] = useState<InterpretResult | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
+  /** D-8: confirmation that a saved rule is inert until explicitly enabled. */
+  const [draftSavedNotice, setDraftSavedNotice] = useState<string | null>(null);
   const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
 
   // ── Data loading ───────────────────────────────────────────────────────
@@ -189,6 +194,7 @@ export default function AutomationsPage() {
     setInterpretError(null);
     setDraft(null);
     setDraftSaveError(null);
+    setDraftSavedNotice(null);
     try {
       const result = await apiRequest<InterpretResult>("/api/v1/automations/interpret", {
         method: "POST",
@@ -247,7 +253,10 @@ export default function AutomationsPage() {
           trigger: draft.draft.trigger,
           condition: draft.draft.condition,
           action: draft.draft.action,
-          enabled: true,
+          // D-8: saved as a disabled draft. Approving the AI's interpretation
+          // means "this rule is correct", not "start running it now" — the
+          // user enables it from the rule list as a separate, audited step.
+          enabled: false,
           sourcePolicy: draft.sourcePolicy,
         },
       });
@@ -255,6 +264,11 @@ export default function AutomationsPage() {
       setPolicy("");
       setDraft(null);
       setDraftSaveError(null);
+      // D-8: the draft card is gone at this point, so say what happened —
+      // otherwise a successful save is indistinguishable from activation.
+      setDraftSavedNotice(
+        "Rule saved as a disabled draft. Enable it below when you're ready for it to run.",
+      );
       // Refresh rule list so the newly saved rule appears
       await loadRules();
     } catch (caught) {
@@ -505,6 +519,19 @@ export default function AutomationsPage() {
                 <Sparkles size={16} />
                 {interpreting ? "Interpreting…" : "Interpret policy"}
               </button>
+
+              {/* D-8: post-save confirmation that the rule is inert for now. */}
+              {draftSavedNotice && (
+                <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-300/20 bg-amber-300/[0.05] p-3">
+                  <AlertTriangle
+                    size={14}
+                    className="mt-0.5 shrink-0 text-amber-300"
+                  />
+                  <p className="text-xs leading-5 text-amber-100/90">
+                    {draftSavedNotice}
+                  </p>
+                </div>
+              )}
 
               {/* Draft preview — only shown after a successful interpretation */}
               {draft && (

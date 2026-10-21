@@ -101,7 +101,20 @@ export const automationRuleCreateSchema = z.object({
   action: z.enum(["NOTIFY_MANAGER", "UPDATE_MILESTONE_PROGRESS", "WRITE_AUDIT_EVENT"]),
   condition: z.string().trim().min(4).max(500),
   description: z.string().trim().max(2000).optional(),
-  enabled: z.boolean().default(true),
+  /**
+   * D-8: new rules are created as disabled drafts.
+   *
+   * The default is `false` so that a client which omits the field cannot
+   * accidentally create a live rule. Activating a rule is a separate, explicit
+   * PATCH that the UI exposes as the enable toggle, and which writes its own
+   * `automation.updated` audit row — so activation is always a deliberate act
+   * with an audit trail, never a side effect of creation.
+   *
+   * This matters most for the AI path: a rule interpreted from natural
+   * language would otherwise begin executing against live project data the
+   * instant it was saved, with no dry run and no review of its behaviour.
+   */
+  enabled: z.boolean().default(false),
   name: z.string().trim().min(2).max(160),
   trigger: z.enum(["TASK_OVERDUE", "TASK_STATUS_CHANGED", "PROJECT_HEALTH_CHANGED"]),
   /**

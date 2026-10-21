@@ -68,6 +68,11 @@ export const POST = withTenantGuard(
           metadata: {
             action: created.action,
             trigger: created.trigger,
+            // D-8: record the activation state at creation. Without it the
+            // audit trail cannot show that a rule was created inert, and a
+            // later `automation.updated` row enabling it has nothing to be
+            // read against.
+            enabled: created.enabled,
           },
           organizationId: tenant.tenantId,
         },

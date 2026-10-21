@@ -171,6 +171,16 @@ export function PolicyDraftCard({
           Discard
         </button>
       </div>
+
+      {/*
+        D-8: state what saving actually does. Approving the interpretation is
+        not the same as putting the rule into production, and without this the
+        button reads as "activate".
+      */}
+      <p className="mt-3 text-[11px] leading-5 text-slate-500">
+        Saved as a disabled draft. It will not run until you enable it in the
+        rules list below.
+      </p>
     </div>
   );
 }

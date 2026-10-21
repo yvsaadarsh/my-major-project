@@ -51,6 +51,11 @@ function guard(name: TableName, op: "create" | "updateMany" | "deleteMany") {
 
 const table = (name: TableName) => ({
   async findFirst({ where }: any = {}) { return __store[name].find((r) => matches(r, where)) ?? null; },
+  async findFirstOrThrow({ where }: Args = {}) {
+    const row = __store[name].find((r) => matches(r, where));
+    if (!row) throw new Error(`${name}.findFirstOrThrow: no row matched`);
+    return row;
+  },
   async findMany({ where, take }: any = {}) {
     const rows = __store[name].filter((r) => matches(r, where));
     return take ? rows.slice(0, take) : rows;
@@ -67,7 +72,15 @@ const table = (name: TableName) => ({
   async updateMany({ where, data }: Args = {}) {
     guard(name, "updateMany");
     const rows = __store[name].filter((r) => matches(r, where));
-    for (const row of rows) Object.assign(row, data);
+    // Prisma ignores keys whose value is `undefined`, which is how a partial
+    // PATCH leaves untouched columns alone. Assigning the raw object would
+    // instead overwrite those columns with undefined, so a request that only
+    // flipped `enabled` would silently blank the rule's name and trigger.
+    const patch: Row = {};
+    for (const [k, v] of Object.entries(data ?? {})) {
+      if (v !== undefined) patch[k] = v;
+    }
+    for (const row of rows) Object.assign(row, patch);
     return { count: rows.length };
   },
   async deleteMany({ where }: Args = {}) {

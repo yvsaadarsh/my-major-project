@@ -20,6 +20,8 @@ import { POST as parseTask } from "@/app/api/v1/ai/parse-task/route";
 import { GET as forecast } from "@/app/api/v1/intelligence/projects/[projectId]/forecast/route";
 import { GET as retrospective } from "@/app/api/v1/projects/[projectId]/milestones/[milestoneId]/retrospective/route";
 import { POST as interpretPolicy } from "@/app/api/v1/automations/interpret/route";
+import { POST as createRule } from "@/app/api/v1/automations/route";
+import { PATCH as patchRule } from "@/app/api/v1/automations/[ruleId]/route";
 import { POST as simulate } from "@/app/api/v1/intelligence/projects/[projectId]/simulate/route";
 import { POST as applyChange } from "@/app/api/v1/intelligence/projects/[projectId]/apply/route";
 
@@ -783,6 +785,128 @@ async function main() {
     "interpret writes nothing to the database",
     __store.activityLog.length === 0 && __store.task.length === 0,
   );
+
+  // ═══════════════════════════════════════════════════════════════════════
+  section("AI › policy activation — rules are saved as disabled drafts [D-8]");
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Before D-8 a saved rule was live the moment it was created: the schema
+  // default was `true` and the Policy Studio save path hardcoded `true`, so an
+  // AI-interpreted rule began executing against live project data with no dry
+  // run. Creation now produces an inert draft and activation is a separate,
+  // audited PATCH.
+
+  const RULE_BODY = {
+    name: "Escalate overdue work",
+    trigger: "TASK_OVERDUE",
+    condition: "priority = HIGH",
+    action: "NOTIFY_MANAGER",
+  };
+
+  reset();
+  res = await createRule(jsonReq(RULE_BODY), ctx({}));
+  eq("rule creation returns 201", res.status, 201);
+  {
+    const body = await readJson(res);
+    eq("[D-8] a rule created without `enabled` is DISABLED", body.automationRule?.enabled, false);
+    eq("[D-8] the stored row is disabled", __store.automationRule[0].enabled, false);
+    eq("rule is scoped to the session's tenant", __store.automationRule[0].organizationId, "org_a");
+    eq("creation wrote one audit row", __store.activityLog.length, 1);
+    eq("audit action is automation.created", __store.activityLog[0].action, "automation.created");
+    eq(
+      "[D-8] the audit row records that it was created disabled",
+      __store.activityLog[0].metadata?.enabled,
+      false,
+    );
+  }
+
+  reset();
+  res = await createRule(jsonReq({ ...RULE_BODY, sourcePolicy: "escalate overdue high priority work" }), ctx({}));
+  {
+    const body = await readJson(res);
+    eq("[D-8] an AI-origin rule (with sourcePolicy) is also disabled", body.automationRule?.enabled, false);
+    eq("sourcePolicy is still persisted", __store.automationRule[0].sourcePolicy,
+      "escalate overdue high priority work");
+  }
+
+  reset();
+  res = await createRule(jsonReq({ ...RULE_BODY, enabled: true }), ctx({}));
+  {
+    // An explicit `enabled: true` remains honoured — the fix changes the
+    // DEFAULT, it does not remove the caller's ability to opt in deliberately.
+    const body = await readJson(res);
+    eq("an explicit enabled:true is still honoured", body.automationRule?.enabled, true);
+  }
+
+  reset();
+  __session.role = "MEMBER";
+  res = await createRule(jsonReq(RULE_BODY), ctx({}));
+  eq("MEMBER cannot create a rule (403)", res.status, 403);
+  eq("no rule was stored", __store.automationRule.length, 0);
+
+  reset();
+  {
+    // A client cannot smuggle another tenant's organizationId through the body.
+    await createRule(jsonReq({ ...RULE_BODY, organizationId: "org_b" }), ctx({}));
+    eq("organizationId comes from the session, never the body",
+      __store.automationRule[0].organizationId, "org_a");
+  }
+
+  // ── Explicit activation ───────────────────────────────────────────────────
+  reset();
+  {
+    await createRule(jsonReq(RULE_BODY), ctx({}));
+    const ruleId = __store.automationRule[0].id;
+    eq("[D-8] starts disabled", __store.automationRule[0].enabled, false);
+
+    const activate = await patchRule(jsonReq({ enabled: true }), ctx({ ruleId }));
+    eq("[D-8] explicit activation succeeds", activate.status, 200);
+    eq("[D-8] the rule is now enabled", __store.automationRule[0].enabled, true);
+    eq("activation wrote a second audit row", __store.activityLog.length, 2);
+    eq("audit action is automation.updated", __store.activityLog[1].action, "automation.updated");
+    eq(
+      "[D-8] the activation audit row records enabled=true",
+      __store.activityLog[1].metadata?.enabled,
+      true,
+    );
+    // Partial PATCH must not blank the untouched columns.
+    eq("activation preserved the rule name", __store.automationRule[0].name, RULE_BODY.name);
+    eq("activation preserved the trigger", __store.automationRule[0].trigger, RULE_BODY.trigger);
+
+    const deactivate = await patchRule(jsonReq({ enabled: false }), ctx({ ruleId }));
+    eq("deactivation succeeds", deactivate.status, 200);
+    eq("the rule is disabled again", __store.automationRule[0].enabled, false);
+  }
+
+  reset();
+  {
+    await createRule(jsonReq(RULE_BODY), ctx({}));
+    const ruleId = __store.automationRule[0].id;
+    __session.role = "MEMBER";
+    res = await patchRule(jsonReq({ enabled: true }), ctx({ ruleId }));
+    eq("MEMBER cannot activate a rule (403)", res.status, 403);
+    eq("the rule stayed disabled", __store.automationRule[0].enabled, false);
+  }
+
+  reset();
+  {
+    // Another tenant cannot activate this tenant's rule.
+    await createRule(jsonReq(RULE_BODY), ctx({}));
+    const ruleId = __store.automationRule[0].id;
+    __session.tenantId = "org_b";
+    res = await patchRule(jsonReq({ enabled: true }), ctx({ ruleId }));
+    check("cross-tenant activation is refused", res.status === 404 || res.status === 403,
+      `got ${res.status}`);
+    eq("the rule stayed disabled", __store.automationRule[0].enabled, false);
+  }
+
+  reset();
+  {
+    // The interpret endpoint must still never create a rule itself.
+    __ai.fastReply = OK_RULE;
+    await interpretPolicy(jsonReq({ policy: "escalate overdue high priority work" }), ctx({}));
+    eq("[D-8] interpreting a policy creates no rule", __store.automationRule.length, 0);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════
   section("AI › simulate — guards, clarification and server-derived token");
