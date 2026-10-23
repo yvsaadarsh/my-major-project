@@ -449,7 +449,12 @@ model AutomationRule {
   organizationId  String            @map("organization_id")
   name            String            @db.VarChar(160)
   description     String?
-  enabled         Boolean           @default(true)
+  // D-8 defense-in-depth: default disabled at the database layer too, so a
+  // future insert that omits `enabled` (a createMany, a raw insert, a direct
+  // DB tool) cannot produce a live rule. The application already defaults this
+  // to false via automationRuleCreateSchema; this aligns the last line.
+  // Existing rows are unaffected by a default change.
+  enabled         Boolean           @default(false)
   trigger         AutomationTrigger
   condition       String            @db.VarChar(500)
   action          AutomationAction
