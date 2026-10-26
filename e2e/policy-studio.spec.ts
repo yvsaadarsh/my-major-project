@@ -53,9 +53,13 @@ test("AI-interpret save path saves a disabled draft [needs AI key]", async ({ pa
     policy: "When a high priority task becomes overdue, notify the manager",
   });
 
+  // 501 = no key; 502 ai_error = key present but the account cannot serve a
+  // model call (e.g. credit balance too low). Interpret has no deterministic
+  // fallback, so either way the AI draft path cannot be verified → BLOCKED.
   test.skip(
-    probe.status === 501,
-    "BLOCKED: AI not configured (interpret returned 501). Requires a development ANTHROPIC_API_KEY.",
+    probe.status === 501 || probe.status === 502,
+    `BLOCKED: live model unavailable (interpret returned ${probe.status}). ` +
+      `Requires a funded development GEMINI_API_KEY.`,
   );
 
   // With a key present, exercise the real Interpret → Save path and assert the

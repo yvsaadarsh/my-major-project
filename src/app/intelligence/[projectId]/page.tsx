@@ -221,7 +221,7 @@ export default function ProjectIntelligencePage() {
           { cache: "no-store", credentials: "include", signal: controller.signal },
         );
 
-        // 501 means the deployment has no ANTHROPIC_API_KEY. Any other failure
+        // 501 means the deployment has no GEMINI_API_KEY. Any other failure
         // is treated identically — the section disappears rather than showing an
         // error for content the user never asked for.
         if (!response.ok || !response.body) {

@@ -14,8 +14,8 @@ import { loadProjectIntelligenceSnapshot } from "@/lib/intelligence/project-snap
  * forbids inventing any other. If this endpoint is unavailable the deterministic
  * page is unchanged — the brief is additive, never a replacement.
  *
- * What is sent to Anthropic
- * -------------------------
+ * What is sent to the model provider
+ * ----------------------------------
  * A structured context object of computed metrics, plus the project name and at
  * most **two** task titles: the top bottleneck and the worst-slipping task. No
  * descriptions, comments, assignees, ids, dates, or any other task row.

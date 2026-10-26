@@ -10,8 +10,9 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:domain": "node --experimental-strip-types scripts/test-auth-policy.ts && node --experimental-strip-types scripts/test-security-headers.ts && tsx scripts/test-intelligence.ts && tsx scripts/test-narrative.ts && tsx scripts/test-parse-helpers.ts",
+    "test:domain": "node --experimental-strip-types scripts/test-auth-policy.ts && node --experimental-strip-types scripts/test-security-headers.ts && tsx scripts/test-intelligence.ts && tsx scripts/test-narrative.ts && tsx scripts/test-parse-helpers.ts && tsx scripts/test-notification-narrator.ts",
     "test:ai": "tsx --tsconfig tsconfig.test.json scripts/test-ai-routes.ts",
+    "test:ai:client": "tsx scripts/test-ai-client.ts",
     "test:ai:live": "tsx scripts/test-ai-live.ts",
     "test": "npm run test:domain && npm run test:ai",
     "db:generate": "prisma generate",
@@ -26,7 +27,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.116.0",
+    "@google/genai": "^2.31.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.3",

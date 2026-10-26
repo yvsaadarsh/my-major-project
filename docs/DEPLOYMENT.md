@@ -48,16 +48,21 @@ Everything below is done in the browser. Total time: ~15 minutes.
 
 ## Step 3 — Set environment variables (in the Vercel import screen)
 
-Before clicking Deploy, expand **Environment Variables** and add these three:
+Before clicking Deploy, expand **Environment Variables** and add these:
 
 | Name | Value |
 | --- | --- |
 | `DATABASE_URL` | the Neon **pooled** connection string from Step 1 — the host must contain `-pooler` and the URL must end with `?sslmode=require` |
 | `SESSION_SECRET` | a long random string, at least 32 characters (one is provided in chat) |
 | `NODE_ENV` | `production` |
+| `GEMINI_API_KEY` | a Google AI Studio key (https://aistudio.google.com/apikey). **Required for the AI features** (Policy Studio, What-If Simulation, task compose, retrospective, narrative, forecast, smart notifications). Without it those features return `501` and are disabled; the rest of the app runs normally. |
 
 > `NODE_ENV=production` is usually set by Vercel automatically; add it explicitly to be safe —
 > it turns on secure (HTTPS-only) session cookies.
+>
+> Optional AI tuning (sensible defaults if unset): `GEMINI_QUALITY_MODEL`, `GEMINI_FAST_MODEL`,
+> `GEMINI_TIMEOUT_MS`, `GEMINI_RETRY_ATTEMPTS`. The server must have outbound network access to
+> `generativelanguage.googleapis.com` for the AI features to work.
 
 ---
 

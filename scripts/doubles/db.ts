@@ -1,4 +1,10 @@
 // TEST DOUBLE — in-memory Prisma. Only the surface the AI routes touch.
+// `any` (not `unknown`) is deliberate and necessary here: route code under the
+// test tsconfig reads arbitrary columns off returned rows (`project.id`,
+// `task.status`, …). `Record<string, unknown>` would make every such access a
+// type error in the real route code this double stands in for. This is the one
+// value type that must stay `any` for the dynamic mock to satisfy its callers.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 export const __store: {
   project: Row[]; milestone: Row[]; task: Row[]; activityLog: Row[];
@@ -22,11 +28,18 @@ type Args = { where?: Row; data?: Row; take?: number };
  *   is exercised: the old implementation checked before opening the
  *   transaction and could not see it.
  * - `failOn` makes one table/operation throw, so transaction rollback can be
- *   observed after a write has already succeeded.
+ *   observed after a write has already succeeded. An optional `error` lets a
+ *   test inject a specific error object (e.g. a driver-adapter serialization
+ *   conflict shape) instead of the generic one, to exercise error
+ *   classification in the route.
  */
 export const __hooks: {
   insideTransaction: (() => void) | null;
-  failOn: { table: TableName; op: "create" | "updateMany" | "deleteMany" } | null;
+  failOn: {
+    table: TableName;
+    op: "create" | "updateMany" | "deleteMany";
+    error?: unknown;
+  } | null;
 } = { insideTransaction: null, failOn: null };
 
 let idCounter = 0;
@@ -35,7 +48,7 @@ function matches(row: Row, where: Row = {}): boolean {
   for (const [k, v] of Object.entries(where)) {
     if (k === "OR") { if (!(v as Row[]).some((c) => matches(row, c))) return false; continue; }
     if (v && typeof v === "object" && !(v instanceof Date)) {
-      if ("in" in v) { if (!(v.in as any[]).includes(row[k])) return false; continue; }
+      if ("in" in v) { if (!(v.in as unknown[]).includes(row[k])) return false; continue; }
       continue;
     }
     if (row[k] !== v) return false;
@@ -45,22 +58,25 @@ function matches(row: Row, where: Row = {}): boolean {
 
 function guard(name: TableName, op: "create" | "updateMany" | "deleteMany") {
   if (__hooks.failOn && __hooks.failOn.table === name && __hooks.failOn.op === op) {
+    if ("error" in __hooks.failOn && __hooks.failOn.error !== undefined) {
+      throw __hooks.failOn.error;
+    }
     throw new Error(`injected failure: ${name}.${op}`);
   }
 }
 
 const table = (name: TableName) => ({
-  async findFirst({ where }: any = {}) { return __store[name].find((r) => matches(r, where)) ?? null; },
+  async findFirst({ where }: Args = {}) { return __store[name].find((r) => matches(r, where)) ?? null; },
   async findFirstOrThrow({ where }: Args = {}) {
     const row = __store[name].find((r) => matches(r, where));
     if (!row) throw new Error(`${name}.findFirstOrThrow: no row matched`);
     return row;
   },
-  async findMany({ where, take }: any = {}) {
+  async findMany({ where, take }: Args = {}) {
     const rows = __store[name].filter((r) => matches(r, where));
     return take ? rows.slice(0, take) : rows;
   },
-  async count({ where }: any = {}) { return __store[name].filter((r) => matches(r, where)).length; },
+  async count({ where }: Args = {}) { return __store[name].filter((r) => matches(r, where)).length; },
 
   async create({ data }: Args = {}) {
     guard(name, "create");
@@ -147,7 +163,7 @@ function dependencyTable() {
   };
 }
 
-export const prisma: any = {
+export const prisma = {
   project: table("project"), milestone: table("milestone"), task: table("task"),
   activityLog: table("activityLog"), taskDependency: dependencyTable(),
   automationRule: table("automationRule"),

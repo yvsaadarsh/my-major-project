@@ -2,7 +2,7 @@
  * Behavioural tests for the AI layer's route handlers.
  *
  * These run the *real* route code. Only three things are swapped for test
- * doubles — Prisma, the session/tenant context, and the Anthropic client — so
+ * doubles — Prisma, the session/tenant context, and the AI client — so
  * validation, status codes, tenant scoping, streaming and the untrusted-output
  * parsing are all exercised as written.
  *
@@ -140,7 +140,7 @@ async function main() {
   reset();
   __ai.configured = false;
   let res = await parseTask(postReq({ text: "ship it", projectId: "proj_a" }), ctx({}));
-  eq("501 when ANTHROPIC_API_KEY is absent", res.status, 501);
+  eq("501 when GEMINI_API_KEY is absent", res.status, 501);
 
   reset();
   __session.role = "MEMBER"; // MEMBER lacks tasks:create
@@ -1454,6 +1454,88 @@ async function main() {
     );
     eq("apply 404 for a task that does not exist", res.status, 404);
     eq("a failed change writes no audit row", __store.activityLog.length, 0);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  section("AI › apply — write-conflict mapping to 409 [D-1 adapter shapes]");
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // A Serializable serialization abort must become 409 (re-simulate), never a
+  // 500, regardless of which error shape the driver raises. Real five-way
+  // concurrency testing showed the Prisma 7 PostgreSQL driver adapter raising
+  // a DriverAdapterError with `originalCode`/`kind` (not `code: "P2034"`),
+  // which previously leaked as 500. These inject each shape deterministically
+  // through a write op inside the apply transaction.
+
+  const conflictShapes: Array<{ label: string; error: Record<string, unknown> }> = [
+    {
+      label: "driver-adapter serialization (originalCode 40001 + kind)",
+      error: Object.assign(new Error("TransactionWriteConflict"), {
+        originalCode: "40001",
+        kind: "TransactionWriteConflict",
+      }),
+    },
+    {
+      label: "driver-adapter deadlock (originalCode 40P01)",
+      error: Object.assign(new Error("deadlock detected"), { originalCode: "40P01" }),
+    },
+    {
+      label: "driver-adapter kind only (TransactionWriteConflict)",
+      error: Object.assign(new Error("conflict"), { kind: "TransactionWriteConflict" }),
+    },
+    {
+      label: "Prisma P2034",
+      error: Object.assign(new Error("Transaction failed due to a write conflict"), {
+        code: "P2034",
+      }),
+    },
+    {
+      label: "raw SQLSTATE on code (40001)",
+      error: Object.assign(new Error("could not serialize access"), { code: "40001" }),
+    },
+    {
+      label: "raw SQLSTATE on code (40P01)",
+      error: Object.assign(new Error("deadlock detected"), { code: "40P01" }),
+    },
+  ];
+
+  for (const shape of conflictShapes) {
+    reset();
+    addTasks(4);
+    const sim = await runSimulate(statusChange("task_1", "DONE"));
+    // Fail the task write inside the transaction with the conflict shape.
+    __hooks.failOn = { table: "task", op: "updateMany", error: shape.error };
+    const r = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    eq(`[D-1] ${shape.label} → 409`, r.status, 409);
+    eq(`[D-1] ${shape.label}: snapshot_stale code`, (await readJson(r)).error, "snapshot_stale");
+    eq(`[D-1] ${shape.label}: no mutation survived`, __store.task[0].status, "TODO");
+    eq(`[D-1] ${shape.label}: no audit row`, __store.activityLog.length, 0);
+  }
+
+  // Guard against over-broadening: a NON-conflict error must NOT be mapped to
+  // 409 — it must surface as a 500-class error, not be silently swallowed.
+  reset();
+  addTasks(4);
+  {
+    const sim = await runSimulate(statusChange("task_1", "DONE"));
+    __hooks.failOn = {
+      table: "task",
+      op: "updateMany",
+      error: Object.assign(new Error("unique constraint"), { code: "P2002" }),
+    };
+    const r = await applyChange(
+      jsonReq({ change: sim.change, snapshotToken: sim.snapshotToken }),
+      ctx({ projectId: "proj_a" }),
+    );
+    check(
+      "[D-1] a non-conflict error is NOT mapped to 409 (not over-broadened)",
+      r.status !== 409,
+      `got ${r.status}`,
+    );
+    eq("[D-1] non-conflict error wrote no audit row", __store.activityLog.length, 0);
   }
 
   // ═══════════════════════════════════════════════════════════════════════

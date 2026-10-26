@@ -6,14 +6,14 @@
  * Nothing here is a substitute for that suite, and that suite is not evidence
  * of live behaviour.
  *
- * What it exercises: the real Anthropic API, through the application's own
+ * What it exercises: the real Google Gemini API, through the application's own
  * `@/lib/ai` integration, driven over real HTTP against a running dev server,
  * with a real session cookie, backed by the disposable local Postgres.
  *
  * Run with:  npm run test:ai:live
  *
  * Prerequisites (all checked below, with a clear message if missing):
- *   1. ANTHROPIC_API_KEY in the gitignored .env — development key only.
+ *   1. GEMINI_API_KEY in the gitignored .env — development key only.
  *   2. The disposable database migrated and seeded.
  *   3. `next dev` listening on LIVE_BASE (default http://127.0.0.1:3123).
  *
@@ -86,11 +86,11 @@ function section(title: string) {
 type Preflight = { ok: true; cookie: string } | { ok: false; reason: string };
 
 async function preflight(): Promise<Preflight> {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return {
       ok: false,
       reason:
-        "ANTHROPIC_API_KEY is not set. Add a DEVELOPMENT key to the gitignored .env " +
+        "GEMINI_API_KEY is not set. Add a DEVELOPMENT key to the gitignored .env " +
         "(see the report accompanying this suite). Never commit it, and never use a " +
         "production credential here.",
     };
@@ -121,6 +121,34 @@ async function preflight(): Promise<Preflight> {
     return {
       ok: false,
       reason: `login failed (HTTP ${res.status}) for ${LOGIN_EMAIL}. Seed the disposable database first.`,
+    };
+  }
+
+  // Model-health probe: this is the LIVE-MODEL suite, so it can only do its job
+  // if the deployment can actually make model calls. A missing key surfaces as
+  // 501 at the config gate; a present-but-unusable account (e.g. invalid key,
+  // or a credit balance too low to serve any request) surfaces as 502 ai_error
+  // from a route with no deterministic fallback (interpret). Either way, real
+  // model behaviour cannot be exercised, so the suite is BLOCKED rather than
+  // reporting a cascade of misleading failures. One probe call; a rejected
+  // request is not billed.
+  const probe = await fetch(`${BASE}/api/v1/automations/interpret`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ policy: "when a high priority task is overdue, notify the manager" }),
+  });
+  if (probe.status !== 200) {
+    let detail = "";
+    try {
+      detail = JSON.stringify(await probe.json());
+    } catch {
+      /* no body */
+    }
+    return {
+      ok: false,
+      reason:
+        `the deployment cannot make live model calls (interpret probe returned ${probe.status}). ` +
+        `Real-model behaviour cannot be verified. Detail: ${detail}`,
     };
   }
 

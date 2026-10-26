@@ -54,7 +54,7 @@ function contentSecurityPolicy(options: SecurityHeaderOptions): string {
     ["img-src", ["'self'", "data:", "blob:"]],
     // The app only ever talks to its own API. No analytics, no third parties,
     // and no model providers: AI calls are made server-side by src/lib/ai, so
-    // the browser still has no reason to reach Anthropic. If this directive ever
+    // the browser still has no reason to reach the model provider. If this directive ever
     // needs widening, a model call has leaked into the client — fix the call.
     ["connect-src", ["'self'"]],
     // No plugins, no Flash, no <object>.

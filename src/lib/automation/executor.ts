@@ -277,8 +277,8 @@ async function runRulesAgainstEvent(
        * The invariant a future developer must preserve: **an AI failure is never
        * an automation failure.** If this were allowed to throw, the surrounding
        * catch would mark the run FAILED, and because the `AutomationRun` row is
-       * kept for idempotency it would never be retried — so a transient Anthropic
-       * outage would permanently swallow a health-change alert. That is strictly
+       * kept for idempotency it would never be retried — so a transient model
+       * provider outage would permanently swallow a health-change alert. That is strictly
        * worse than sending a plainly-worded one.
        */
       let effectiveAction = action;

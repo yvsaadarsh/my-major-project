@@ -263,19 +263,38 @@ class StaleSnapshotError extends Error {
   }
 }
 
+/** PostgreSQL SQLSTATEs for a serialization failure and a deadlock. */
+const WRITE_CONFLICT_SQLSTATES = new Set(["40001", "40P01"]);
+
 /**
- * True for Prisma's write-conflict / deadlock error.
+ * True for a write-conflict / deadlock abort, however the stack surfaces it.
  *
  * Under `Serializable`, Postgres aborts one of two transactions that read and
- * then wrote the same rows. Prisma surfaces that as `P2034`; the underlying
- * SQLSTATEs are 40001 (serialization failure) and 40P01 (deadlock). Checked
- * structurally so this route need not import the generated client, whose types
- * are unavailable in some environments.
+ * then wrote the same rows (SQLSTATE 40001), or breaks a deadlock (40P01). That
+ * abort reaches this route in more than one shape depending on the driver:
+ *
+ *   - Prisma's own error carries `code: "P2034"`.
+ *   - The Prisma 7 PostgreSQL driver adapter (PrismaPg) instead throws a
+ *     `DriverAdapterError` whose `code` is undefined and whose SQLSTATE is on
+ *     `originalCode` (e.g. "40001"), with `kind: "TransactionWriteConflict"`.
+ *     Real five-way concurrency testing showed this shape leaking as a 500
+ *     because only `code` was checked.
+ *
+ * All known shapes are recognized here so a genuine conflict is always mapped
+ * to 409. Checked structurally so this route need not import the generated
+ * client, whose types are unavailable in some environments. This changes only
+ * error classification — not isolation, not retry behaviour.
  */
 function isWriteConflict(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
-  const code = (error as { code?: unknown }).code;
-  return code === "P2034" || code === "40001" || code === "40P01";
+  const e = error as { code?: unknown; originalCode?: unknown; kind?: unknown };
+  if (e.code === "P2034") return true;
+  if (typeof e.code === "string" && WRITE_CONFLICT_SQLSTATES.has(e.code)) return true;
+  if (typeof e.originalCode === "string" && WRITE_CONFLICT_SQLSTATES.has(e.originalCode)) {
+    return true;
+  }
+  if (e.kind === "TransactionWriteConflict") return true;
+  return false;
 }
 
 // ─── Route handler ────────────────────────────────────────────────────────────
