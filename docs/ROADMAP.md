@@ -1,6 +1,6 @@
 # Roadmap
 
-Phased plan from the current foundation toward the full non-AI vision. Each phase
+Historical implementation roadmap, followed by the current remaining work. Each phase
 is scoped to a focused work session and ends in a verifiable state (build green,
 tests, or a walkthrough). Order can shift when the code shows a better dependency
 path.
@@ -13,9 +13,8 @@ path.
 - Rewrote `README.md` and `AGENTS.md`; added the `docs/` suite (audit,
   architecture, security, database, this roadmap).
 
-**Outstanding for you:** run `npm install && npm run db:generate && npm run
-typecheck && npm run build` locally to confirm green (the session sandbox couldn't
-run npm/tsc).
+Current cloud verification is recorded in [CLOUD-VALIDATION.md](CLOUD-VALIDATION.md).
+The phase notes below describe progress at their original dates, not current blockers.
 
 ## Phase 1 — Testing foundation + safety net
 
@@ -308,9 +307,8 @@ detection over the dependency graph — are weighted-signal analysis and graph
 theory, not language work. The stated requirements (explainable not black-box,
 tenant-isolated, no auto-modification) all argue *against* an LLM computing these
 numbers: it would make the score non-reproducible and unauditable, and would
-egress tenant task data to a third party. If narrative phrasing is wanted later,
-the right shape is a model that renders the already-computed factors and is never
-allowed to produce the number.
+egress tenant task data to a third party. The implemented Gemini layer now renders these already-computed factors and
+is never allowed to produce the number.
 
 - **Project Health Intelligence.** `src/lib/domain/project-intelligence.ts`: six
   signals (overdue, blocked, slippage, velocity, milestone risk, deadline) with
@@ -422,10 +420,20 @@ cross-project critical path (dependencies are project-scoped in the schema).
 - Entitlements/plan layer (centralized, not scattered `if plan === …`).
 - CSV/structured import & export (permission-respecting).
 
-## Deferred to Stage 2 (explicitly out of scope now)
+## Current AI implementation and remaining work
 
-All AI features. The foundation's clean APIs, events, and audit logs are the
-integration surface a future AI layer will consume.
+Implemented: the server-side Gemini client, Policy Studio, What-If Simulation,
+task composition, milestone retrospectives, project narratives, forecasts, and
+notification narration. Domain scores and simulation diffs stay deterministic;
+user review and authorization gate writes. See `docs/ARCHITECTURE.md`.
+
+Still unverified: real Gemini responses for these workflows in the current cloud
+instance, until a secure development key and permitted API egress are available.
+Mocked tests and deterministic fallback behavior are separate evidence.
+
+Planned: integrations/billing/import-export, background scheduling infrastructure,
+password recovery, stronger CSRF protection, observability, and further accessibility
+coverage. Embeddings, RAG and autonomous unreviewed database writes are not implemented.
 
 ## Throughput note
 

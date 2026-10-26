@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import {
   Bell,
   Calculator,
@@ -25,6 +25,7 @@ import {
 } from "@/components/work-os/overview-panels";
 import { apiRequest } from "@/lib/ui/api-client";
 import { errorMessage } from "@/lib/ui/error-message";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type { Overview } from "@/lib/ui/work-os-types";
@@ -33,9 +34,7 @@ export default function WorkOsPage() {
   const { error: authError, loading: authLoading, organization, role } = useAuthSession({
     requireOrganization: true,
   });
-  const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [automationName, setAutomationName] = useState("");
   const [automationCondition, setAutomationCondition] = useState(
@@ -44,6 +43,10 @@ export default function WorkOsPage() {
   const [automationTrigger, setAutomationTrigger] = useState("TASK_OVERDUE");
   const [automationAction, setAutomationAction] = useState("NOTIFY_MANAGER");
 
+  const { data: overview, loading, error: queryError, reload: loadOverview } = useApiQuery<Overview>(
+    organization ? "/api/v1/work-os/overview" : null, "Unable to load Work OS.", organization?.id,
+  );
+
   const topHealth = useMemo(
     () =>
       overview?.health
@@ -51,26 +54,6 @@ export default function WorkOsPage() {
         .sort((a, b) => a.intelligence.score - b.intelligence.score) ?? [],
     [overview],
   );
-
-  async function loadOverview() {
-    setError(null);
-    setLoading(true);
-
-    try {
-      const response = await apiRequest<Overview>("/api/v1/work-os/overview");
-      setOverview(response);
-    } catch (caught) {
-      setError(errorMessage(caught, "Unable to load Work OS."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (organization) {
-      void loadOverview();
-    }
-  }, [organization]);
 
   async function createAutomation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -126,7 +109,7 @@ export default function WorkOsPage() {
       title="Plan, risk, access, and operations in one tenant-safe control room."
       description="Northstar connects projects, milestones, tasks, dependencies, notifications, automations, and audit history in one tenant-scoped view."
     >
-      {error && <InlineError message={error} />}
+      {(error || queryError) && <InlineError message={error || queryError!} />}
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">

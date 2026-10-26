@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Activity,
   AlarmClock,
@@ -18,8 +18,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
-import { apiRequest } from "@/lib/ui/api-client";
-import { errorMessage } from "@/lib/ui/error-message";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type { ApiProjectIntelligence, Band } from "@/lib/ui/intelligence-types";
 
@@ -144,30 +143,10 @@ export default function AnalyticsPage() {
   const { error: authError, loading: authLoading, organization, role } = useAuthSession({
     requireOrganization: true,
   });
-  const [data, setData] = useState<AnalyticsOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function loadOverview() {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiRequest<AnalyticsOverview>("/api/v1/analytics/overview");
-      setData(response);
-    } catch (caught) {
-      setError(errorMessage(caught, "Unable to load analytics."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!organization) {
-      return;
-    }
-    void loadOverview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization]);
+  const { data, loading, error, reload: loadOverview } = useApiQuery<AnalyticsOverview>(
+    organization ? "/api/v1/analytics/overview" : null, "Unable to load analytics.", organization?.id,
+  );
 
   const maxThroughput = useMemo(
     () => Math.max(1, ...(data?.throughput.map((bucket) => bucket.completed) ?? [1])),

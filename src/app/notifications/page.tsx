@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Bell, CheckCheck, Settings2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -12,6 +12,7 @@ import {
   type AppNotification,
   type NotificationPreference,
 } from "@/lib/ui/api-client";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { errorMessage } from "@/lib/ui/error-message";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
@@ -38,46 +39,28 @@ export default function NotificationsPage() {
     requireOrganization: true,
   });
 
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [filter, setFilter] = useState<"all" | "unread">("all");
-  const [preference, setPreference] = useState<NotificationPreference | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [preferenceOverride, setPreferenceOverride] = useState<{ organizationId: string | undefined; value: NotificationPreference } | null>(null);
   const [savingPrefs, setSavingPrefs] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setError] = useState<string | null>(null);
 
-  async function loadNotifications(nextFilter: "all" | "unread") {
-    setError(null);
-    setLoading(true);
-    try {
-      const query = nextFilter === "unread" ? "?unread=1" : "";
-      const [list, prefs] = await Promise.all([
-        apiRequest<NotificationsResponse>(`/api/v1/notifications${query}`, {
-          cache: "no-store",
-        }),
-        preference
-          ? Promise.resolve({ preference })
-          : apiRequest<{ preference: NotificationPreference }>(
-              "/api/v1/notifications/preferences",
-              { cache: "no-store" },
-            ),
-      ]);
-      setNotifications(list.notifications);
-      setUnreadCount(list.unreadCount);
-      setPreference(prefs.preference);
-    } catch (caught) {
-      setError(errorMessage(caught, "Unable to load notifications."));
-    } finally {
-      setLoading(false);
-    }
+  const { data, loading, error: listError, reload: loadNotifications } = useApiQuery<NotificationsResponse>(
+    organization ? `/api/v1/notifications${filter === "unread" ? "?unread=1" : ""}` : null,
+    "Unable to load notifications.", organization?.id,
+  );
+  const { data: prefs, error: prefsError } = useApiQuery<{ preference: NotificationPreference }>(
+    organization ? "/api/v1/notifications/preferences" : null, "Unable to load preferences.", organization?.id,
+  );
+  const error = actionError || listError || prefsError;
+
+  const notifications = data?.notifications ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
+  const preference = preferenceOverride?.organizationId === organization?.id
+    ? preferenceOverride?.value ?? prefs?.preference ?? null
+    : prefs?.preference ?? null;
+  function setPreference(value: NotificationPreference) {
+    setPreferenceOverride({ organizationId: organization?.id, value });
   }
-
-  useEffect(() => {
-    if (organization) {
-      void loadNotifications(filter);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization, filter]);
 
   async function markRead(id: string, read: boolean) {
     try {
@@ -85,7 +68,7 @@ export default function NotificationsPage() {
         method: "PATCH",
         body: { read },
       });
-      await loadNotifications(filter);
+      await loadNotifications();
     } catch (caught) {
       setError(errorMessage(caught, "Unable to update notification."));
     }
@@ -94,7 +77,7 @@ export default function NotificationsPage() {
   async function markAllRead() {
     try {
       await apiRequest("/api/v1/notifications/read-all", { method: "POST" });
-      await loadNotifications(filter);
+      await loadNotifications();
     } catch (caught) {
       setError(errorMessage(caught, "Unable to mark all read."));
     }

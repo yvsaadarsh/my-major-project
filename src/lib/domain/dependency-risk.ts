@@ -50,14 +50,6 @@ export type RiskDependency = {
   type: RiskDependencyType;
 };
 
-/** Priority ordering used for weighting downstream cost. */
-const PRIORITY_WEIGHT: Record<RiskTaskPriority, number> = {
-  LOW: 1,
-  MEDIUM: 2,
-  HIGH: 4,
-  URGENT: 6,
-};
-
 const OPEN_STATUSES = new Set<RiskTaskStatus>(["TODO", "IN_PROGRESS", "BLOCKED"]);
 
 export function isOpen(task: RiskTask): boolean {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck } from "lucide-react";
@@ -19,29 +20,10 @@ type NotificationsResponse = {
  */
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload } = useApiQuery<NotificationsResponse>("/api/v1/notifications", "Unable to load notifications.");
+  const notifications = data?.notifications ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
   const containerRef = useRef<HTMLDivElement>(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const response = await apiRequest<NotificationsResponse>("/api/v1/notifications", {
-        cache: "no-store",
-      });
-      setNotifications(response.notifications);
-      setUnreadCount(response.unreadCount);
-    } catch {
-      // Best-effort: a failed poll must never break the shell.
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -75,12 +57,7 @@ export function NotificationsBell() {
         method: "PATCH",
         body: { read: true },
       });
-      setNotifications((current) =>
-        current.map((item) =>
-          item.id === id ? { ...item, readAt: item.readAt ?? new Date().toISOString() } : item,
-        ),
-      );
-      setUnreadCount((count) => Math.max(0, count - 1));
+      await reload();
     } catch {
       // Ignore; the list will re-sync on next open.
     }
@@ -89,11 +66,7 @@ export function NotificationsBell() {
   async function markAllRead() {
     try {
       await apiRequest("/api/v1/notifications/read-all", { method: "POST" });
-      const stamp = new Date().toISOString();
-      setNotifications((current) =>
-        current.map((item) => ({ ...item, readAt: item.readAt ?? stamp })),
-      );
-      setUnreadCount(0);
+      await reload();
     } catch {
       // Ignore.
     }

@@ -97,10 +97,6 @@ function LockoutNotice({ seconds }: { seconds: number }) {
   const [remaining, setRemaining] = useState(seconds);
 
   useEffect(() => {
-    setRemaining(seconds);
-  }, [seconds]);
-
-  useEffect(() => {
     if (remaining <= 0) {
       return;
     }
@@ -350,7 +346,7 @@ export default function AuthPage() {
                 )}
               </label>
 
-              {lockoutSeconds !== null && <LockoutNotice seconds={lockoutSeconds} />}
+              {lockoutSeconds !== null && <LockoutNotice key={lockoutSeconds} seconds={lockoutSeconds} />}
 
               {lockoutSeconds === null && error && <InlineError message={error} />}
 

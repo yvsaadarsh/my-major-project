@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   AlarmClock,
@@ -17,8 +17,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
-import { apiRequest } from "@/lib/ui/api-client";
-import { errorMessage } from "@/lib/ui/error-message";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import type {
   ApiHealthSignal,
@@ -246,28 +245,9 @@ export default function IntelligencePage() {
     role,
   } = useAuthSession({ requireOrganization: true });
 
-  const [data, setData] = useState<OverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      setData(
-        await apiRequest<OverviewResponse>("/api/v1/intelligence/overview", { cache: "no-store" }),
-      );
-    } catch (caught) {
-      setError(errorMessage(caught, "Could not load intelligence."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
+  const { data, loading, error, reload: load } = useApiQuery<OverviewResponse>(
+    "/api/v1/intelligence/overview", "Could not load intelligence.", organization?.id,
+  );
 
   const riskByProject = useMemo(() => {
     const map = new Map<string, OverviewResponse["risk"][number]>();

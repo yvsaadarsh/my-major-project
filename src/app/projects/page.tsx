@@ -1,6 +1,7 @@
 "use client";
 
-import { ComponentType, useCallback, useEffect, useMemo, useState } from "react";
+import { ComponentType, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useProjectView } from "@/lib/ui/use-project-view";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 
 import { AppShell, RoleNotice } from "@/components/app-shell";
@@ -21,10 +22,8 @@ import {
   applyView,
   DEFAULT_VIEW_CONFIG,
   filterTasks,
-  isViewType,
   normalizeViewConfig,
   sortTasks,
-  type ViewConfig,
   type ViewType,
 } from "@/lib/domain/view-engine";
 import {
@@ -47,10 +46,6 @@ const viewComponents: Record<ViewType, ComponentType<ViewProps>> = {
   TIMELINE: TimelineView,
 };
 
-function viewStorageKey(projectId: string) {
-  return `project-os:view:${projectId}`;
-}
-
 function formatDate(value?: string | null) {
   if (!value) {
     return "Not set";
@@ -72,9 +67,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
-  const [viewType, setViewType] = useState<ViewType>("BOARD");
-  const [viewConfig, setViewConfig] = useState<ViewConfig>(DEFAULT_VIEW_CONFIG);
-  const [hydratedProjectId, setHydratedProjectId] = useState<string | null>(null);
+  const { viewType, viewConfig, setViewType, setViewConfig, setView } = useProjectView(selectedProjectId);
   // A title handed over from the "Create task with AI → Edit first" flow,
   // pushed into CreateTaskForm as its initial value.
   const [draftTaskTitle, setDraftTaskTitle] = useState("");
@@ -172,20 +165,11 @@ export default function ProjectsPage() {
     }
   }
 
-  const loadSavedViews = useCallback(async (projectId: string) => {
-    const response = await apiRequest<{ views: SavedView[] }>(
-      `/api/v1/views?projectId=${encodeURIComponent(projectId)}`,
-    );
-
-    setSavedViews(response.views);
-
-    return response.views;
-  }, []);
-
+  const loadInitialWorkspace = useEffectEvent(loadWorkspace);
   useEffect(() => {
     if (organization) {
       queueMicrotask(() => {
-        void loadWorkspace();
+        void loadInitialWorkspace();
       });
     }
   }, [organization]);
@@ -228,8 +212,6 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!selectedProjectId) {
-      setDependencies([]);
-      setMilestones([]);
       return;
     }
 
@@ -265,13 +247,14 @@ export default function ProjectsPage() {
   // Saved views visible to this user for the selected project (plus org-level ones).
   useEffect(() => {
     if (!selectedProjectId) {
-      setSavedViews([]);
       return;
     }
 
     let mounted = true;
 
-    loadSavedViews(selectedProjectId).catch((caught) => {
+    apiRequest<{ views: SavedView[] }>(`/api/v1/views?projectId=${encodeURIComponent(selectedProjectId)}`)
+      .then((response) => { if (mounted) setSavedViews(response.views); })
+      .catch((caught) => {
       if (mounted) {
         setError(errorMessage(caught, "Unable to load saved views."));
       }
@@ -280,54 +263,19 @@ export default function ProjectsPage() {
     return () => {
       mounted = false;
     };
-  }, [loadSavedViews, selectedProjectId]);
-
-  // Restore the last-used view type/config for this project from localStorage.
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setHydratedProjectId(null);
-      return;
-    }
-
-    let nextViewType: ViewType = "BOARD";
-    let nextConfig: ViewConfig = DEFAULT_VIEW_CONFIG;
-
-    try {
-      const raw = window.localStorage.getItem(viewStorageKey(selectedProjectId));
-
-      if (raw) {
-        const stored = JSON.parse(raw) as { viewType?: unknown; config?: unknown };
-
-        if (isViewType(stored.viewType)) {
-          nextViewType = stored.viewType;
-        }
-        nextConfig = normalizeViewConfig(stored.config);
-      }
-    } catch {
-      // Corrupt or unavailable storage simply falls back to the defaults.
-    }
-
-    setViewType(nextViewType);
-    setViewConfig(nextConfig);
-    setSelectedViewId(null);
-    setHydratedProjectId(selectedProjectId);
   }, [selectedProjectId]);
 
-  // Persist it again on every change, once this project has been hydrated.
-  useEffect(() => {
-    if (!selectedProjectId || hydratedProjectId !== selectedProjectId) {
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(
-        viewStorageKey(selectedProjectId),
-        JSON.stringify({ config: viewConfig, viewType }),
-      );
-    } catch {
-      // Storage may be disabled; the view still works for this session.
-    }
-  }, [hydratedProjectId, selectedProjectId, viewConfig, viewType]);
+  // Reset project-owned state before rendering a different project. Fetch effects
+  // populate it asynchronously; an old project's rows must never flash here.
+  const [previousProjectId, setPreviousProjectId] = useState(selectedProjectId);
+  if (previousProjectId !== selectedProjectId) {
+    setPreviousProjectId(selectedProjectId);
+    setTasks([]);
+    setDependencies([]);
+    setMilestones([]);
+    setSavedViews([]);
+    setSelectedViewId(null);
+  }
 
   function handleSelectView(viewId: string) {
     if (!viewId) {
@@ -342,8 +290,7 @@ export default function ProjectsPage() {
     }
 
     setSelectedViewId(view.id);
-    setViewType(view.viewType);
-    setViewConfig(normalizeViewConfig(view.config));
+    setView(view.viewType, normalizeViewConfig(view.config));
   }
 
   function handleResetConfig() {

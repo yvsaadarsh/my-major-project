@@ -70,16 +70,6 @@ export async function verifySessionToken(
 }
 
 export function sessionCookieOptions(maxAge = SESSION_MAX_AGE_SECONDS) {
-  let domain: string | undefined;
-
-  try {
-    if (process.env.NEXTAUTH_URL) {
-      domain = new URL(process.env.NEXTAUTH_URL).hostname;
-    }
-  } catch {
-    domain = undefined;
-  }
-
   return {
     httpOnly: true,
     maxAge,

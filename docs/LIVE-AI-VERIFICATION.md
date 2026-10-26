@@ -13,6 +13,19 @@ procedure gets that evidence with the smallest, reproducible set of steps.
 
 ---
 
+## Cloud execution
+
+The Codex cloud environment can run the same TypeScript live suite directly;
+Windows and the PowerShell helper are **not required**. Use a dedicated disposable
+database and run `npm run db:deploy`, `npm run db:seed`, `npm run build`, then
+start the server with that database. Run `npm run test:ai:live` with the same
+secure `GEMINI_API_KEY` binding and `LIVE_BASE` pointing to the test server.
+Never infer PASS from exit code alone: the suite exits zero when its preflight
+reports **NOT RUN**. The current cloud results are in `CLOUD-VALIDATION.md`.
+
+Set the key through secure environment settings and allow outbound HTTPS to
+`generativelanguage.googleapis.com`. Do not paste credentials into chat.
+
 ## 0. Prerequisites
 
 | Requirement | Detail |

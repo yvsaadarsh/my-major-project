@@ -92,8 +92,8 @@ npm run db:seed     # demo data
 - Sessions are HS256 JWTs signed with `SESSION_SECRET` (≥32 chars), stored in an
   HTTP-only cookie `pm_session` (`src/lib/auth/session.ts`).
 - Passwords hashed with bcrypt cost 12 (`src/lib/auth/password.ts`).
-- `secure: false` on the cookie today (HTTP dev). **Set `secure: true` before any
-  production deployment over HTTPS.**
+- Cookies are host-only, HTTP-only and SameSite=Lax. `secure` is enabled when
+  `NODE_ENV=production`; local development uses HTTP.
 
 ## Authorization
 

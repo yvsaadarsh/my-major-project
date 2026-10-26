@@ -22,8 +22,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
 import { SimulationWorkspace } from "@/components/simulation/SimulationWorkspace";
-import { apiRequest } from "@/lib/ui/api-client";
-import { errorMessage } from "@/lib/ui/error-message";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import { useForecastStream } from "@/lib/ui/use-forecast-stream";
 import type {
@@ -157,10 +156,6 @@ export default function ProjectIntelligencePage() {
     role,
   } = useAuthSession({ requireOrganization: true });
 
-  const [data, setData] = useState<IntelligenceResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [brief, setBrief] = useState("");
   const [briefState, setBriefState] = useState<BriefState>("loading");
   /** Bumped by Refresh so the brief re-streams alongside the deterministic data. */
@@ -168,36 +163,15 @@ export default function ProjectIntelligencePage() {
 
   const { forecast, state: forecastState } = useForecastStream(projectId, refreshToken);
 
-  async function load() {
-    if (!projectId) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      setData(
-        await apiRequest<IntelligenceResponse>(`/api/v1/intelligence/projects/${projectId}`, {
-          cache: "no-store",
-        }),
-      );
-    } catch (caught) {
-      setError(errorMessage(caught, "Could not load intelligence."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, refreshToken]);
+  const { data, loading, error } = useApiQuery<IntelligenceResponse>(
+    projectId ? `/api/v1/intelligence/projects/${projectId}` : null,
+    "Could not load intelligence.", `${organization?.id ?? ""}:${refreshToken}`,
+  );
 
   /**
    * Stream the AI brief.
    *
-   * Separate from `load()` on purpose: the deterministic analysis is the page,
+   * Separate from the deterministic query on purpose: the deterministic analysis is the page,
    * and it must render at full speed without waiting on a model. The two
    * requests run concurrently and neither can block or fail the other.
    */

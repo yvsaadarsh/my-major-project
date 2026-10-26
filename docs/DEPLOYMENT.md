@@ -53,7 +53,7 @@ Before clicking Deploy, expand **Environment Variables** and add these:
 | Name | Value |
 | --- | --- |
 | `DATABASE_URL` | the Neon **pooled** connection string from Step 1 — the host must contain `-pooler` and the URL must end with `?sslmode=require` |
-| `SESSION_SECRET` | a long random string, at least 32 characters (one is provided in chat) |
+| `SESSION_SECRET` | a securely generated random secret of at least 32 characters |
 | `NODE_ENV` | `production` |
 | `GEMINI_API_KEY` | a Google AI Studio key (https://aistudio.google.com/apikey). **Required for the AI features** (Policy Studio, What-If Simulation, task compose, retrospective, narrative, forecast, smart notifications). Without it those features return `501` and are disabled; the rest of the app runs normally. |
 
@@ -134,7 +134,7 @@ The empty database is fine (you just register). If you also want the sample
 - **Tables missing at runtime / `relation does not exist`** → the build no longer
   applies migrations. Run `npm run db:deploy` (Step 4a).
 - **"SESSION_SECRET must be at least 32 characters"** → your secret is too short.
-  Replace it with the 48-byte value from chat and redeploy.
+  Generate a new random value securely in deployment settings and redeploy.
 - **Can't stay logged in** → make sure `NODE_ENV=production` is set (secure cookies over HTTPS).
 - **Database connection errors at runtime** → confirm you used the **pooled** Neon
   string (host contains `-pooler`), which is required for serverless functions.
@@ -158,4 +158,5 @@ Vercel auto-redeploys on every push to `main`.
 ## Redeploying after changes
 
 Any push to the `main` branch triggers an automatic Vercel rebuild and redeploy —
-including applying any new database migrations. Nothing else to do.
+but migrations are a separate release step: run `prisma migrate deploy` deliberately
+before promoting a release that needs them. A build does not migrate the database.

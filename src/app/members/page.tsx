@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ShieldCheck, UserPlus } from "lucide-react";
 
 import { AppShell, RoleNotice } from "@/components/app-shell";
@@ -36,7 +36,7 @@ export default function MembersPage() {
   const [saving, setSaving] = useState(false);
   const [managingMemberId, setManagingMemberId] = useState<string | null>(null);
 
-  async function loadMembers() {
+  const loadMembers = useCallback(async () => {
     setError(null);
     setLoading(true);
 
@@ -55,7 +55,7 @@ export default function MembersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [role]);
 
   useEffect(() => {
     if (organization) {
@@ -63,7 +63,7 @@ export default function MembersPage() {
         void loadMembers();
       });
     }
-  }, [organization]);
+  }, [organization, loadMembers]);
 
   async function inviteMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

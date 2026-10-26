@@ -26,7 +26,7 @@ How Project OS is structured and how a request flows through it.
 │   delegate to domain/infra → shape response (json/ApiError).   │
 ├───────────────────────────────────────────────────────────────┤
 │ AI (Stage 2)   src/lib/ai/**                                   │
-│   Server-only Anthropic SDK wrapper + system prompts. Leaf     │
+│   Server-only Google Gemini SDK wrapper + system prompts. Leaf     │
 │   module: no Prisma, no React, no tenant logic. Reads domain   │
 │   output; the domain never reads it.                           │
 ├───────────────────────────────────────────────────────────────┤
@@ -90,7 +90,7 @@ server-derived tenant context — never from the request body or query string.
 | `src/lib/domain/automation-engine.ts` | Pure trigger→condition→action planning + deterministic dedupe keys |
 | `src/lib/automation/executor.ts` | Idempotent persistence of automation plans (AutomationRun ledger); inline + scheduled dispatch |
 | `src/lib/notifications/service.ts` | Notification creation with preference filtering + unread dedupe |
-| `src/lib/ai/client.ts` | Server-only Anthropic wrapper: `streamQuality` (Sonnet, streamed) and `callFast` (Haiku, buffered). Lazy key read, provider errors normalized to plain `Error` |
+| `src/lib/ai/client.ts` | Server-only Gemini wrapper: `streamQuality` (gemini-2.5-pro, streamed) and `callFast` (gemini-2.5-flash, buffered). Bounded timeout, transient-only retries, redacted errors and injected-client test seam |
 | `src/lib/ai/prompts.ts` | Named system-prompt constants. One place to review and diff prompt wording |
 | `src/lib/validators.ts` | Zod request schemas |
 | `src/lib/db.ts` | Prisma client (pg driver adapter, hot-reload safe) |
@@ -132,21 +132,45 @@ Notifications: `notifications`, `notifications/:id`, `notifications/read-all`,
 
 ## AI layer (Stage 2)
 
-`src/lib/ai/**` is a leaf module wrapping the Anthropic SDK. Two entry points:
-`streamQuality` (claude-sonnet-4-5, streamed, for prose a user watches appear)
-and `callFast` (claude-haiku-4-5, buffered, for short or structured output).
+`src/lib/ai/**` is a leaf module wrapping the Google Gemini SDK. Two entry points:
+`streamQuality` (gemini-2.5-pro, streamed, for prose a user watches appear)
+and `callFast` (gemini-2.5-flash, buffered, for short or structured output).
 
 Non-negotiables:
 
-- **Server-side only.** `ANTHROPIC_API_KEY` is a server env var with no `NEXT_PUBLIC_`
+- **Server-side only.** `GEMINI_API_KEY` is a server env var with no `NEXT_PUBLIC_`
   prefix, so it cannot reach a client bundle. Importing this module into a Client
   Component is a bug.
 - **CSP unchanged.** `connect-src 'self'` still holds: the browser talks to our API,
-  our server talks to Anthropic. Needing to widen `connect-src` would mean a model
+  our server talks to Gemini. Needing to widen `connect-src` would mean a model
   call escaped to the client.
 - **The domain layer never imports it.** Numbers stay deterministic; AI describes them.
 - **Output is untrusted.** Anything JSON-shaped gets parsed and Zod-validated before
   it goes near Prisma.
+
+### Implemented AI workflows
+
+- **Policy Studio:** interprets text into a validated rule draft; saving and
+  activation are separate, authorized actions. AI-created rules start disabled.
+- **What-If Simulation:** computes deterministic diffs without mutating the
+  project; a separately authorized apply operation checks a signed snapshot,
+  transaction conflicts and replay. AI interpretation/narration can fall back;
+  a successful simulation is not proof of a live model response.
+- **Task composition:** validates parsed task suggestions before the user saves.
+- **Retrospectives, health narratives and forecasts:** narrate already-scoped
+  project data. Retrospectives require closed milestones; forecasts require
+  sufficient history. Missing keys or provider failures are not successful prose.
+- **Notifications:** optional Gemini narration; deterministic fallback on failure.
+
+`GEMINI_QUALITY_MODEL` and `GEMINI_FAST_MODEL` override model selection.
+`GEMINI_TIMEOUT_MS` defaults to 30000; `GEMINI_RETRY_ATTEMPTS` defaults to 3,
+with a cap of 5. Streaming does not retry partial output. The live provider
+remains separately verifiable from injected-client and route-double tests.
+
+Client data requests use `useApiQuery` on the main reporting/search surfaces:
+request keys include tenant/project context, loading is derived on key changes,
+and aborted or obsolete responses cannot replace the active result. Project
+view preferences subscribe to browser storage through `useSyncExternalStore`.
 
 ## Extensibility hooks for later (built, not yet wired)
 

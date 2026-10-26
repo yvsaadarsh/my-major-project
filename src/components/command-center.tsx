@@ -1,5 +1,6 @@
 "use client";
 
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -114,10 +115,8 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [response, setResponse] = useState<SearchResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [actionError, setError] = useState<string | null>(null);
+  const [cursor, setActiveIndex] = useState(0);
   const [copied, setCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -150,7 +149,6 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
   const closePalette = useCallback(() => {
     setOpen(false);
     setQuery("");
-    setResponse(null);
     setError(null);
     setActiveIndex(0);
     // Discard any in-flight AI compose state — Escape or a backdrop click must
@@ -247,40 +245,14 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  useEffect(() => {
-    const active = parseSearchQuery(debounced);
+  const activeSearch = parseSearchQuery(debounced);
+  const searchUrl = open && !activeSearch.commandMode && activeSearch.phrase.replace(/\s+/g, "").length >= 2
+    ? `/api/v1/command/search?q=${encodeURIComponent(debounced)}` : null;
+  const { data: response, loading, error: searchError } = useApiQuery<SearchResponse>(
+    searchUrl, "Search is unavailable right now.",
+  );
 
-    // Command mode (`>`) and too-short queries never hit the network.
-    if (!open || active.commandMode || active.phrase.replace(/\s+/g, "").length < 2) {
-      setResponse(null);
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    apiRequest<SearchResponse>(`/api/v1/command/search?q=${encodeURIComponent(debounced)}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then((data) => {
-        setResponse(data);
-        setActiveIndex(0);
-      })
-      .catch((caught: unknown) => {
-        // An aborted request is the expected outcome of fast typing.
-        if (caught instanceof DOMException && caught.name === "AbortError") {
-          return;
-        }
-        setResponse(null);
-        setError("Search is unavailable right now.");
-      })
-      .finally(() => setLoading(false));
-
-    return () => controller.abort();
-  }, [debounced, open]);
+  const error = actionError || searchError;
 
   // ── Sections ────────────────────────────────────────────────────────────
   // Commands come first when the user typed `>` or typed nothing; records come
@@ -324,15 +296,12 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
    */
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
 
-  // Clamp the cursor whenever the list shrinks under it.
-  useEffect(() => {
-    setActiveIndex((current) => {
-      if (rows.length === 0) {
-        return 0;
-      }
-      return Math.min(current, rows.length - 1);
-    });
-  }, [rows.length]);
+  const [previousResponse, setPreviousResponse] = useState(response);
+  if (previousResponse !== response) {
+    setPreviousResponse(response);
+    setActiveIndex(0);
+  }
+  const activeIndex = Math.min(cursor, Math.max(0, rows.length - 1));
 
   // Keep the highlighted row visible without yanking the whole page.
   useEffect(() => {
@@ -420,14 +389,14 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
 
     if (event.key === "ArrowDown" || (event.key === "n" && event.ctrlKey)) {
       event.preventDefault();
-      setActiveIndex((current) => (rows.length === 0 ? 0 : (current + 1) % rows.length));
+      setActiveIndex((current) => (rows.length === 0 ? 0 : (Math.min(current, rows.length - 1) + 1) % rows.length));
       return;
     }
 
     if (event.key === "ArrowUp" || (event.key === "p" && event.ctrlKey)) {
       event.preventDefault();
       setActiveIndex((current) =>
-        rows.length === 0 ? 0 : (current - 1 + rows.length) % rows.length,
+        rows.length === 0 ? 0 : (Math.min(current, rows.length - 1) - 1 + rows.length) % rows.length,
       );
       return;
     }

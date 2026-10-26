@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { PermissionAction } from "@/components/permission-action";
@@ -33,12 +33,12 @@ export function CreateTaskForm({
   const [assignedToUserId, setAssignedToUserId] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Apply a fresh handed-over title if the parent surfaces one after mount.
-  useEffect(() => {
-    if (initialTitle) {
-      setTitle(initialTitle);
-    }
-  }, [initialTitle]);
+  // Adjust before children render; clearing the handoff must preserve user edits.
+  const [previousTitle, setPreviousTitle] = useState(initialTitle);
+  if (previousTitle !== initialTitle) {
+    setPreviousTitle(initialTitle);
+    if (initialTitle) setTitle(initialTitle);
+  }
 
   const allowedToCreate = can(role, "tasks:create");
   const allowedToAssign = can(role, "tasks:assign");

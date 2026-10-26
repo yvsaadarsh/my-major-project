@@ -4,9 +4,11 @@ A multi-tenant, **AI** project & work-management platform. Organizations manage
 projects, milestones, tasks, dependencies, members, automations and activity —
 with tenant isolation enforced at the database level.
 
-> **Stage 1 (now):** build the best possible non-AI foundation.
-> **Stage 2 (later):** AI is added as a separate layer on top. No AI code lives in
-> this repository today, by design — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The deterministic project-management core is implemented, with a server-side
+Google Gemini layer for policy drafting, What-If Simulation, task composition,
+retrospectives, health narratives, forecasts and notification narration. Model
+output is untrusted; tenant guards and deterministic calculations remain authoritative.
+See [cloud validation](docs/CLOUD-VALIDATION.md) for current evidence and limitations.
 
 ## Tech stack
 
@@ -20,10 +22,11 @@ with tenant isolation enforced at the database level.
 | Authorization | Role-based permission matrix (`src/lib/rbac.ts`) |
 | Styling | Tailwind CSS v4 |
 | Icons | lucide-react |
+| AI | Google Gemini via `@google/genai`, server-side only |
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24 LTS (validated here with 24.19.0; Prisma requires a supported modern Node release)
 - A reachable PostgreSQL 14+ instance
 - `npm` (a `package-lock.json` is committed)
 
@@ -31,7 +34,7 @@ with tenant isolation enforced at the database level.
 
 ```bash
 # 1. Install dependencies
-npm install
+npm ci
 
 # 2. Configure environment
 cp .env.example .env
@@ -41,12 +44,11 @@ cp .env.example .env
 # 3. Generate the Prisma client
 npm run db:generate
 
-# 4. Apply migrations to your database
-npm run db:migrate      # dev (creates/updates the DB from prisma/migrations)
-# or, against an existing prod DB:
-# npm run db:deploy
+# 4. Apply committed migrations to a disposable development database
+npm run db:deploy
+# Use db:migrate only when authoring a new schema migration.
 
-# 5. Seed demo data (optional but recommended)
+# 5. Seed disposable demo data (resets the demo organization and users)
 npm run db:seed
 
 # 6. Start the dev server
@@ -73,9 +75,32 @@ npm run dev
 | `npm run typecheck` | `tsc --noEmit` type checking |
 | `npm run db:generate` | Generate the Prisma client into `src/generated/prisma` |
 | `npm run db:migrate` | Create/apply a dev migration |
-| `npm run db:deploy` | Apply committed migrations (prod) |
+| `npm run db:deploy` | Apply committed migrations to the explicitly selected database |
 | `npm run db:seed` | Load demo data |
 | `npm run db:studio` | Open Prisma Studio |
+
+## Validation and cloud setup
+
+`npm run test:domain`, `npm run test:ai`, `npm run test:ai:client` and
+`npm run test:ui` exercise deterministic logic, mocked routes, the Gemini client
+and React state lifecycles. Run `npm run lint`, `npm run typecheck`, and
+`npm run build` as separate checks. Mocked tests do not verify live Gemini.
+
+`npm run test:e2e` requires a seeded **disposable** PostgreSQL database, a
+production build, and Chromium. Set `PW_CHROMIUM` to an existing browser if
+needed (this cloud environment uses `/usr/bin/chromium`). Set `DATABASE_URL`
+explicitly for the test server. Tests create records and must never target a
+shared or production database. Live AI tests can skip when prerequisites are absent.
+
+The Codex environment retains dependencies and PostgreSQL data, but services
+must restart. Saved environment startup instructions describe the local database
+and readiness checks. Installation needs `registry.npmjs.org` and
+`binaries.prisma.sh`; fonts are bundled locally by `geist` and need no Google
+Fonts download. `GEMINI_API_KEY` is optional for core development and required
+for live AI, with outbound HTTPS to `generativelanguage.googleapis.com`. Enter
+it securely in environment settings; never commit it or send it to the browser.
+See [live verification](docs/LIVE-AI-VERIFICATION.md) and
+[deployment](docs/DEPLOYMENT.md). No production deployment is part of cloud setup.
 
 ## Project layout
 

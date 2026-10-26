@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Flag,
@@ -18,8 +19,7 @@ import { AppShell } from "@/components/app-shell";
 import { Highlighted } from "@/components/highlighted-text";
 import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { SectionCard } from "@/components/section-card";
-import { apiRequest } from "@/lib/ui/api-client";
-import { errorMessage } from "@/lib/ui/error-message";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 import {
   entityLabel,
@@ -61,68 +61,28 @@ const TYPE_ICONS: Record<SearchEntityType, typeof SearchIcon> = {
  * Both surfaces call the same endpoint and render with the same domain helpers,
  * so a result can never appear here but not there (or rank differently).
  */
-export default function SearchPage() {
+function SearchContent() {
+  const searchParams = useSearchParams();
   const { error: authError, loading: authLoading, organization, role } = useAuthSession({
     requireOrganization: true,
   });
 
-  const [input, setInput] = useState("");
-  const [debounced, setDebounced] = useState("");
+  const [input, setInput] = useState(() => searchParams.get("q") ?? "");
+  const [debounced, setDebounced] = useState(() => searchParams.get("q") ?? "");
   const [activeTypes, setActiveTypes] = useState<SearchEntityType[]>([]);
-  const [response, setResponse] = useState<SearchResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const parsed = useMemo(() => parseSearchQuery(debounced), [debounced]);
-
-  // Seed from ?q= so the palette's "Search everything" hand-off keeps the query.
-  // Read once on mount rather than via useSearchParams to avoid forcing this
-  // page into a Suspense boundary.
-  useEffect(() => {
-    const initial = new URLSearchParams(window.location.search).get("q");
-    if (initial) {
-      setInput(initial);
-      setDebounced(initial);
-    }
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(input), 220);
     return () => clearTimeout(timer);
   }, [input]);
 
-  useEffect(() => {
-    if (parsed.phrase.replace(/\s+/g, "").length < 2) {
-      setResponse(null);
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    const params = new URLSearchParams({ q: parsed.raw });
-    if (activeTypes.length > 0) {
-      params.set("types", activeTypes.join(","));
-    }
-
-    apiRequest<SearchResponse>(`/api/v1/command/search?${params.toString()}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(setResponse)
-      .catch((caught: unknown) => {
-        if (caught instanceof DOMException && caught.name === "AbortError") {
-          return;
-        }
-        setResponse(null);
-        setError(errorMessage(caught, "Search failed."));
-      })
-      .finally(() => setLoading(false));
-
-    return () => controller.abort();
-  }, [activeTypes, parsed.phrase, parsed.raw]);
+  const params = new URLSearchParams({ q: parsed.raw });
+  if (activeTypes.length > 0) params.set("types", activeTypes.join(","));
+  const { data: response, loading, error } = useApiQuery<SearchResponse>(
+    parsed.phrase.replace(/\s+/g, "").length >= 2 ? `/api/v1/command/search?${params}` : null,
+    "Search failed.", organization?.id,
+  );
 
   /**
    * Group the flat result list ourselves rather than using the response's
@@ -340,3 +300,6 @@ export default function SearchPage() {
   );
 }
 
+export default function SearchPage() {
+  return <Suspense fallback={<LoadingState />}><SearchContent /></Suspense>;
+}

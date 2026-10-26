@@ -1,9 +1,15 @@
-# Baseline audit
+# Historical Day-1 baseline audit
 
 An honest assessment of the codebase inherited from the previous build, and what
 was changed to establish a trustworthy baseline (Day 1 of the roadmap).
 
 _Last updated: 2026-08-11._
+
+This document preserves the **2026-08-11 historical audit**. Its missing tests,
+static-only build verification, insecure-cookie and session-revocation findings
+have since been addressed. It is not the current readiness report. See
+[CLOUD-VALIDATION.md](CLOUD-VALIDATION.md), `AGENTS.md`, and the current package
+scripts for verified status. Remaining deployment gaps are tracked in `SECURITY.md`.
 
 ## Summary
 

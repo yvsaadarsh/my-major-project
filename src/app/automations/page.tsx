@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AlertTriangle, Play, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 
 import { AppShell, RoleNotice } from "@/components/app-shell";
@@ -18,6 +18,7 @@ import {
   type AutomationTrigger,
   type InterpretResult,
 } from "@/lib/ui/api-client";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
@@ -56,9 +57,7 @@ export default function AutomationsPage() {
   const canManage = can(role, "automations:manage");
 
   // ── Existing automation state ──────────────────────────────────────────
-  const [rules, setRules] = useState<AutomationRule[]>([]);
   const [form, setForm] = useState(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<AutomationRunSummary | null>(null);
@@ -76,27 +75,10 @@ export default function AutomationsPage() {
 
   // ── Data loading ───────────────────────────────────────────────────────
 
-  async function loadRules() {
-    setError(null);
-    setLoading(true);
-    try {
-      const response = await apiRequest<{ automationRules: AutomationRule[] }>(
-        "/api/v1/automations",
-        { cache: "no-store" },
-      );
-      setRules(response.automationRules);
-    } catch (caught) {
-      setError(errorMessage(caught, "Unable to load automations."));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (organization) {
-      void loadRules();
-    }
-  }, [organization]);
+  const { data, loading, error: queryError, reload: loadRules } = useApiQuery<{ automationRules: AutomationRule[] }>(
+    organization ? "/api/v1/automations" : null, "Unable to load automations.", organization?.id,
+  );
+  const rules = data?.automationRules ?? [];
 
   // ── Manual rule creation ───────────────────────────────────────────────
 
@@ -315,9 +297,9 @@ export default function AutomationsPage() {
       title="Deterministic rules that keep work moving."
       description="Each rule runs a trigger → condition → action pipeline. Runs are idempotent: the same event never fires the same effect twice."
     >
-      {error && (
+      {(error || queryError) && (
         <div className="mb-4">
-          <InlineError message={error} />
+          <InlineError message={error || queryError!} />
         </div>
       )}
 
