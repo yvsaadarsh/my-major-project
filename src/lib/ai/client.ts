@@ -40,8 +40,10 @@ export const QUALITY_MODEL = process.env.GEMINI_QUALITY_MODEL?.trim() || "gemini
  */
 export const FAST_MODEL = process.env.GEMINI_FAST_MODEL?.trim() || "gemini-2.5-flash";
 
-const QUALITY_MAX_TOKENS = 1024;
-const FAST_MAX_TOKENS = 512;
+// Thinking tokens share this budget on current Gemini models. Keep legacy
+// defaults, but allow a bounded environment override for the selected model.
+const QUALITY_MAX_TOKENS = Math.min(positiveIntEnv("GEMINI_QUALITY_MAX_TOKENS", 1024), 8192);
+const FAST_MAX_TOKENS = Math.min(positiveIntEnv("GEMINI_FAST_MAX_TOKENS", 512), 8192);
 
 function positiveIntEnv(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -219,10 +221,17 @@ export async function* streamQuality(
       },
     });
 
+    let completed = false;
     for await (const chunk of stream) {
+      const reason = chunk.candidates?.[0]?.finishReason;
+      if (reason && reason !== "STOP") {
+        throw new Error(`Gemini completion incomplete (${reason}).`);
+      }
+      if (reason === "STOP") completed = true;
       const text = chunk.text;
       if (text) yield text;
     }
+    if (!completed) throw new Error("Gemini stream ended without a completion marker.");
   } catch (error) {
     throw toCleanError(error, "streamQuality");
   }
@@ -255,6 +264,10 @@ export async function callFast(
       },
     });
 
+    const reason = response.candidates?.[0]?.finishReason;
+    if (reason !== "STOP") {
+      throw new Error(`Gemini completion incomplete (${reason ?? "missing finish reason"}).`);
+    }
     return (response.text ?? "").trim();
   } catch (error) {
     throw toCleanError(error, "callFast");

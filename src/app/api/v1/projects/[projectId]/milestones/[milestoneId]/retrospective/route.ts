@@ -232,10 +232,9 @@ export const GET = withTenantGuard<Params>(
 
           controller.close();
         } catch (error) {
-          // Mid-stream failure: the reader already has a 200 and some prose.
-          // Close cleanly so it keeps what arrived.
+          // Abort the body so a partial completion cannot appear successful.
           console.error("[retrospective] stream ended early", error);
-          controller.close();
+          controller.error(new Error("AI response incomplete"));
         }
       },
       async cancel() {

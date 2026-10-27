@@ -81,6 +81,13 @@ function section(title: string) {
   console.log(`\n${title}`);
 }
 
+/** Log categories, never model text or request payloads. */
+function failureCategory(body: unknown): string {
+  const message = typeof body === "object" && body !== null && "message" in body
+    ? String(body.message) : "";
+  return message.match(/rate limited|service error \(\d+\)|completion incomplete \([^)]*\)|timed out after \d+ms|could not reach Gemini|rejected the API key \(\d+\)|non-JSON|unexpected shape|empty response/i)?.[0] ?? "unclassified upstream response";
+}
+
 // ── Preflight ────────────────────────────────────────────────────────────────
 
 type Preflight = { ok: true; cookie: string } | { ok: false; reason: string };
@@ -140,7 +147,7 @@ async function preflight(): Promise<Preflight> {
   if (probe.status !== 200) {
     let detail = "";
     try {
-      detail = JSON.stringify(await probe.json());
+      detail = failureCategory(await probe.json());
     } catch {
       /* no body */
     }
@@ -235,7 +242,7 @@ async function main() {
   const good = await call("POST", "/api/v1/automations/interpret", cookie, {
     policy: "When a high priority task becomes overdue, notify the manager",
   });
-  check("supported policy returns 200", good.status === 200, `got ${good.status}`);
+  check("supported policy returns 200", good.status === 200, `got ${good.status}; ${failureCategory(good.body)}`);
   if (good.status === 200) {
     const d = good.body?.draft;
     check("draft is present", Boolean(d));
@@ -282,10 +289,11 @@ async function main() {
       where: { organizationId: org.id, enabled: true },
     });
     spend(1, "interpret a policy that duplicates an existing enabled rule");
+    const ruleCountBefore = await prisma.automationRule.count({ where: { organizationId: org.id } });
     const dup = await call("POST", "/api/v1/automations/interpret", cookie, {
       policy: `${existing.trigger === "TASK_OVERDUE" ? "When a task becomes overdue" : "When a task status changes"}, ${existing.action === "NOTIFY_MANAGER" ? "notify the manager" : "update milestone progress"}`,
     });
-    check("duplicate-intent policy returns 200", dup.status === 200, `got ${dup.status}`);
+    check("duplicate-intent policy returns 200", dup.status === 200, `got ${dup.status}; ${failureCategory(dup.body)}`);
     if (dup.status === 200) {
       check("conflicts array is present", Array.isArray(dup.body?.conflicts));
       const kinds = (dup.body?.conflicts ?? []).map((c: { kind: string }) => c.kind);
@@ -302,8 +310,7 @@ async function main() {
         skip("conflict assertion", "model produced a draft that genuinely does not collide");
       }
       check("interpret still wrote nothing to the database",
-        (await prisma.automationRule.count({ where: { organizationId: org.id } })) ===
-          (await prisma.automationRule.count({ where: { organizationId: org.id } })));
+        (await prisma.automationRule.count({ where: { organizationId: org.id } })) === ruleCountBefore);
     }
   }
 
@@ -333,6 +340,8 @@ async function main() {
     liveChange = sim.body.change;
 
     check("status is 'simulated'", sim.body.status === "simulated");
+    check("live interpretation consumed Gemini output", sim.body.aiProvenance?.interpretation === "gemini");
+    check("live narration consumed Gemini output", sim.body.aiProvenance?.narration === "gemini");
     check("interpretedIntent is a non-empty string",
       typeof sim.body.interpretedIntent === "string" && sim.body.interpretedIntent.trim().length > 0);
     // [D-3] The intent must describe the SAME target the structured change

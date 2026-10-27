@@ -1,5 +1,9 @@
 # Live Gemini Verification — Handoff Procedure
 
+Latest investigation: [2026-10-27 results](LIVE-AI-RESULTS-2026-10-27.md).
+Completion metadata and explicit simulation provenance now gate live success.
+The latest blocker is the provider daily free-tier request quota.
+
 Run this from an **authorized environment with outbound access to
 `generativelanguage.googleapis.com`** (your own machine or a deployment). The
 Anthropic→Gemini swap, client hardening, and all seven AI features are already
@@ -7,7 +11,7 @@ verified for *safety and regression* in CI-style checks; the **only** thing that
 cannot be verified without that egress is a **real model response**. This
 procedure gets that evidence with the smallest, reproducible set of steps.
 
-> Scope note: the sandbox used for development cannot reach Google's endpoint
+> Historical scope note: the original development sandbox could not reach Google's endpoint
 > (DNS `ENOTFOUND` / proxy `403`), so live AI there is `BLOCKED`, never `PASS`.
 > Nothing below changes application code — it only exercises the real client.
 
@@ -267,7 +271,8 @@ Only two route shapes can *prove* a real model response:
 | --- | --- | --- |
 | **No fallback** (returns `502` when the model is unreachable) | Policy Studio `interpret`, task `parse-task` | **`200` with the required fields** (`draft.trigger`+`draft.action` from the supported enums / a non-empty `title`) — a fallback cannot produce it → **PASS (real)** |
 | **502-not-prose on failure** | `narrative`, `forecast`, `retrospective` | **`200` with substantive streamed prose** — failure yields `502`, never canned prose → **PASS (real)** |
-| **Has a deterministic fallback** (always `200`) | What-If Simulation narration/intent; smart notification body | **UNVERIFIED** — `200`/text does not prove provenance. The simulation **diff** is a separate deterministic **PASS**; the narration is `FALLBACK` if `interpretedIntent == "Evaluate the impact of a <type> change."`, else UNVERIFIED. The notification body has no provenance marker: confirm it belongs to your `PROJECT_HEALTH_CHANGED` rule, then compare it by eye against the deterministic template. |
+| **Explicit provenance with deterministic fallback** | What-If Simulation | Require both `aiProvenance.interpretation` and `aiProvenance.narration` to be `gemini`. The simulation diff is a separate deterministic check. Any `fallback` value fails live provenance. |
+| **Has an unmarked deterministic fallback** | Smart notification body | `200` alone is UNVERIFIED. Confirm the notification belongs to the tested health transition and differs from the deterministic template; corroborate with completion metadata. |
 
 Error taxonomy (the client normalizes each to a distinct message):
 
@@ -280,7 +285,14 @@ Error taxonomy (the client normalizes each to a distinct message):
 | `timed out after N ms` | deadline hit | raise `GEMINI_TIMEOUT_MS` / investigate latency |
 
 Models: `gemini-2.5-pro` (quality/streamed), `gemini-2.5-flash` (fast/structured),
-overridable via `GEMINI_QUALITY_MODEL`/`GEMINI_FAST_MODEL`. Reliability:
+overridable via `GEMINI_QUALITY_MODEL`/`GEMINI_FAST_MODEL`. Total output budgets
+(including thinking) can be set with `GEMINI_FAST_MAX_TOKENS` and
+`GEMINI_QUALITY_MAX_TOKENS` (capped at 8192; defaults 512/1024). The latest
+3.6 test used 4096 for each. Non-STOP or missing completion markers fail; a
+mid-stream failure aborts the response body instead of cleanly closing it.
+For simulation, require `aiProvenance.interpretation` and
+`aiProvenance.narration` both equal `gemini`; fallbacks are never live PASS.
+Reliability:
 `GEMINI_TIMEOUT_MS` (30000), `GEMINI_RETRY_ATTEMPTS` (3; transient 408/429/5xx only).
 
 **Record live AI as PASS only where the route contract proves provenance (rows 1–2

@@ -147,6 +147,7 @@ export const POST = withTenantGuard<{ projectId: string }>(
     });
 
     let interpretedIntent = "";
+    const aiProvenance = { interpretation: "fallback", narration: "fallback" };
 
     try {
       const raw = await callFast(SIMULATION_INTERPRET_SYSTEM, call1UserMessage);
@@ -163,6 +164,7 @@ export const POST = withTenantGuard<{ projectId: string }>(
         });
       } else {
         interpretedIntent = parsed.data.interpretedIntent;
+        aiProvenance.interpretation = "gemini";
       }
     } catch (error) {
       // Call 1 failure is non-fatal: we can still run the deterministic engine
@@ -208,6 +210,7 @@ export const POST = withTenantGuard<{ projectId: string }>(
       narration = await collectStream(
         streamQuality(SIMULATION_NARRATE_SYSTEM, call2UserMessage),
       );
+      if (narration) aiProvenance.narration = "gemini";
       if (!narration) {
         narration = deterministicNarration(
           interpretedIntent,
@@ -245,6 +248,7 @@ export const POST = withTenantGuard<{ projectId: string }>(
     // mutation executes.
     return json({
       status: "simulated",
+      aiProvenance,
       interpretedIntent,
       change,
       changeDescription: describeChange(change),

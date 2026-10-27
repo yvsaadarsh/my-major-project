@@ -51,14 +51,14 @@ function check(name: string, ok: boolean, detail = "") {
 type GenArgs = { model: string; contents: unknown; config: Record<string, unknown> };
 function fakeClient(opts: {
   onGenerate?: (args: GenArgs) => unknown;
-  onStream?: (args: GenArgs) => AsyncIterable<{ text?: string }>;
+  onStream?: (args: GenArgs) => AsyncIterable<{ text?: string; candidates?: {finishReason: string}[] }>;
 }) {
   const calls: { generate: GenArgs[]; stream: GenArgs[] } = { generate: [], stream: [] };
   const client = {
     models: {
       generateContent(args: GenArgs) {
         calls.generate.push(args);
-        const r = opts.onGenerate ? opts.onGenerate(args) : { text: "ok" };
+        const r = opts.onGenerate ? opts.onGenerate(args) : { text: "ok", candidates: [{finishReason: "STOP"}] };
         if (r instanceof Error) throw r;
         return r;
       },
@@ -67,7 +67,7 @@ function fakeClient(opts: {
         if (!opts.onStream) {
           return (async function* () {
             yield { text: "hello " };
-            yield { text: "world" };
+            yield { text: "world", candidates: [{finishReason: "STOP"}] };
           })();
         }
         return opts.onStream(args);
@@ -97,7 +97,7 @@ async function main() {
 
   // ── callFast: happy path + config wiring ───────────────────────────────────
   {
-    const { client, calls } = fakeClient({ onGenerate: () => ({ text: "  trimmed me  " }) });
+    const { client, calls } = fakeClient({ onGenerate: () => ({ text: "  trimmed me  ", candidates: [{finishReason: "STOP"}] }) });
     __setClientFactoryForTests(() => client as never);
     const out = await callFast("SYS", "USER");
     check("callFast returns trimmed model text", out === "trimmed me", JSON.stringify(out));
@@ -105,12 +105,13 @@ async function main() {
     check("callFast uses the FAST model", arg.model === FAST_MODEL, arg?.model);
     check("callFast sends systemInstruction + maxOutputTokens",
       arg.config.systemInstruction === "SYS" && typeof arg.config.maxOutputTokens === "number");
+    check("output budget is bounded", Number(arg.config.maxOutputTokens) > 0 && Number(arg.config.maxOutputTokens) <= 8192);
     const http = arg.config.httpOptions as { timeout: number; retryOptions: { attempts: number } };
     check("callFast request carries timeout + retry attempts",
       http.timeout === REQUEST_TIMEOUT_MS && http.retryOptions.attempts === RETRY_ATTEMPTS);
     check("callFast returns '' when the model produced no text",
       (await (async () => {
-        const f = fakeClient({ onGenerate: () => ({ text: undefined }) });
+        const f = fakeClient({ onGenerate: () => ({ text: undefined, candidates: [{finishReason: "STOP"}] }) });
         __setClientFactoryForTests(() => f.client as never);
         return callFast("S", "U");
       })()) === "");
@@ -165,6 +166,7 @@ async function main() {
     check("streamQuality concatenates text chunks", acc === "hello world", JSON.stringify(acc));
     const arg = calls.stream[0];
     check("streamQuality uses the QUALITY model", arg.model === QUALITY_MODEL, arg?.model);
+    check("output budget is bounded", Number(arg.config.maxOutputTokens) > 0 && Number(arg.config.maxOutputTokens) <= 8192);
     const http = arg.config.httpOptions as { retryOptions: { attempts: number } };
     check("streamQuality disables retries (no duplicate output)", http.retryOptions.attempts === 1);
   }
@@ -188,6 +190,24 @@ async function main() {
     }
     check("streamQuality surfaces a mid-stream failure as a clean error",
       threw.includes("streamQuality failed") && threw.includes("retryable"));
+  }
+
+  for (const reason of ["MAX_TOKENS", "SAFETY", undefined]) {
+    const f = fakeClient({onGenerate: () => ({text: '{"title":"partial', candidates: reason ? [{finishReason: reason}] : []})});
+    __setClientFactoryForTests(() => f.client as never);
+    let rejected = false;
+    try { await callFast("S", "U"); } catch { rejected = true; }
+    check(`reject incomplete structured output: ${reason ?? "missing marker"}`, rejected);
+  }
+  for (const reason of ["MAX_TOKENS", undefined]) {
+    const f = fakeClient({onStream: () => (async function* () {
+      yield {text: "partial prose"};
+      if (reason) yield {candidates: [{finishReason: reason}]};
+    })()});
+    __setClientFactoryForTests(() => f.client as never);
+    let rejected = false;
+    try { for await (const chunk of streamQuality("S", "U")) void chunk; } catch { rejected = true; }
+    check(`reject incomplete stream: ${reason ?? "missing marker"}`, rejected);
   }
 
   __setClientFactoryForTests(null);

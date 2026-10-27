@@ -150,14 +150,9 @@ export const GET = withTenantGuard<{ projectId: string }>(
 
           controller.close();
         } catch (error) {
-          // Mid-stream failure. The client already has a 200 and some prose, so
-          // the honest options are "abort the body" or "stop cleanly and keep
-          // what arrived". Closing cleanly is chosen: the reader keeps a partial
-          // brief rather than throwing away text that is still accurate, and the
-          // brief is advisory content sitting above an unaffected deterministic
-          // page.
+          // Abort the body so a partial completion cannot appear successful.
           console.error("[narrative] stream ended early", error);
-          controller.close();
+          controller.error(new Error("AI response incomplete"));
         }
       },
       async cancel() {

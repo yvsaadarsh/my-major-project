@@ -124,10 +124,9 @@ export const GET = withTenantGuard<{ projectId: string }>(
 
           controller.close();
         } catch (error) {
-          // Mid-stream failure: the client already has a 200 and some prose.
-          // Close cleanly and let the reader keep the partial forecast.
+          // Abort the body so a partial completion cannot appear successful.
           console.error("[forecast] stream ended early", error);
-          controller.close();
+          controller.error(new Error("AI response incomplete"));
         }
       },
       async cancel() {

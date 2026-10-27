@@ -373,7 +373,7 @@ async function main() {
   addTasks(10);
   __ai.streamChunks = ["Apollo will likely ", "finish approximately two weeks late."];
   res = await forecast(getReq(), ctx({ projectId: "proj_a" }));
-  let text = await bodyOf(res);
+  const text = await bodyOf(res);
   eq("streamed body is the concatenated chunks", text, "Apollo will likely finish approximately two weeks late.");
   eq("streams as text/plain", res.headers.get("content-type"), "text/plain; charset=utf-8");
   eq("is never cached", res.headers.get("cache-control"), "no-store");
@@ -391,9 +391,10 @@ async function main() {
   __ai.streamChunks = ["partial text survives", "never sent"];
   __ai.failStreamAt = 1; // fail mid-stream
   res = await forecast(getReq(), ctx({ projectId: "proj_a" }));
-  text = await bodyOf(res);
+  let streamRejected = false;
+  try { await bodyOf(res); } catch { streamRejected = true; }
   eq("mid-stream failure still returns 200 (status already sent)", res.status, 200);
-  eq("  …and the reader keeps the partial text", text, "partial text survives");
+  check("incomplete body rejects instead of reporting a complete response", streamRejected);
 
   // ═══════════════════════════════════════════════════════════════════════
   section("AI › forecast — what actually reaches the model");
@@ -1033,6 +1034,15 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  for (const mode of ["success", "malformed", "failure"] as const) {
+    reset(); addTasks(4);
+    __ai.fastReply = mode === "malformed" ? "{}" : JSON.stringify({status: "simulated", interpretedIntent: "Complete task_1"});
+    if (mode === "failure") { __ai.failFast = new Error("upstream"); __ai.failStreamAt = 1; __ai.streamChunks = ["partial", "never"]; }
+    const body = await runSimulate(statusChange("task_1"));
+    eq(`interpretation provenance: ${mode}`, body.aiProvenance?.interpretation, mode === "success" ? "gemini" : "fallback");
+    eq(`narration provenance: ${mode}`, body.aiProvenance?.narration, mode === "failure" ? "fallback" : "gemini");
+  }
+
   section("AI › simulate — reviewed intent matches the structured change");
   // ═══════════════════════════════════════════════════════════════════════
 
