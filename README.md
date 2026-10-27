@@ -8,7 +8,9 @@ The deterministic project-management core is implemented, with a server-side
 Google Gemini layer for policy drafting, What-If Simulation, task composition,
 retrospectives, health narratives, forecasts and notification narration. Model
 output is untrusted; tenant guards and deterministic calculations remain authoritative.
-See [cloud validation](docs/CLOUD-VALIDATION.md) for current evidence and limitations.
+See [project review validation](docs/PROJECT-REVIEW-VALIDATION.md) for current
+browser/live-AI evidence and [cloud validation](docs/CLOUD-VALIDATION.md) for the
+earlier setup checkpoint.
 
 ## Tech stack
 

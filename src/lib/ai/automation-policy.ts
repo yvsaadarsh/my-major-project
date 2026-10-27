@@ -168,7 +168,7 @@ export async function interpretAutomationPolicy(
   } catch {
     return {
       status: "ai_error",
-      reason: `AI returned non-JSON output. Raw: ${rawText.slice(0, 120)}`,
+      reason: "AI returned non-JSON output. Try rephrasing the policy.",
     };
   }
 

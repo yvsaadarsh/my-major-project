@@ -1,5 +1,8 @@
 "use client";
 
+import { readTaskDraft } from "@/lib/ui/task-draft";
+import type { ParsedTask } from "@/lib/ui/use-ai-compose";
+
 import { ComponentType, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useProjectView } from "@/lib/ui/use-project-view";
 import { RefreshCw, ShieldCheck } from "lucide-react";
@@ -70,6 +73,7 @@ export default function ProjectsPage() {
   const { viewType, viewConfig, setViewType, setViewConfig, setView } = useProjectView(selectedProjectId);
   // A title handed over from the "Create task with AI → Edit first" flow,
   // pushed into CreateTaskForm as its initial value.
+  const [draftTask, setDraftTask] = useState<ParsedTask | null>(null);
   const [draftTaskTitle, setDraftTaskTitle] = useState("");
   // A project id handed over from the same flow, applied once its project has loaded.
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
@@ -179,14 +183,12 @@ export default function ProjectsPage() {
   // needed) and pre-fills the standard create-task form.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("new") !== "task") {
-      return;
-    }
-
-    const title = params.get("title");
+    const title = params.get("new") === "task" ? params.get("title") : null;
     const projectId = params.get("projectId");
 
     queueMicrotask(() => {
+      const draftId = params.get("draft");
+      if (draftId && projectId) setDraftTask(readTaskDraft(draftId, projectId));
       if (title) {
         setDraftTaskTitle(title);
       }
@@ -429,6 +431,7 @@ export default function ProjectsPage() {
             project={selectedProject}
             members={members}
             initialTitle={draftTaskTitle}
+            initialDraft={draftTask ?? undefined}
             onCreated={(task) => setTasks((current) => [task, ...current])}
             onError={setError}
           />

@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { Permission } from "@/lib/rbac";
 
 export const GET = withTenantGuard(Permission.DashboardRead, async (_request, tenant) => {
-  const [projectCount, taskCount, completedTaskCount, memberCount] = await Promise.all([
+  const [activeProjectCount, projectCount, taskCount, completedTaskCount, memberCount] = await Promise.all([
+    prisma.project.count({ where: { organizationId: tenant.tenantId, status: "ACTIVE" } }),
     prisma.project.count({
       where: { organizationId: tenant.tenantId },
     }),
@@ -19,12 +20,13 @@ export const GET = withTenantGuard(Permission.DashboardRead, async (_request, te
       },
     }),
     prisma.organizationMember.count({
-      where: { organizationId: tenant.tenantId },
+      where: { organizationId: tenant.tenantId, status: "ACTIVE" },
     }),
   ]);
 
   return json({
     summary: {
+      activeProjectCount,
       completedTaskCount,
       memberCount,
       projectCount,

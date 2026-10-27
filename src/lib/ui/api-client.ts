@@ -343,6 +343,7 @@ export type ChangeDescription = {
 export type SimulateResult =
   | {
       status: "simulated";
+      aiProvenance?: { interpretation: "gemini" | "fallback"; narration: "gemini" | "fallback" };
       interpretedIntent: string;
       /**
        * The Zod-validated change the server simulated, including any schema

@@ -18,13 +18,12 @@ test("a reviewed proposal is single-use: second apply of the same token is rejec
   page,
 }) => {
   await page.goto("/automations");
-  const projects = await apiFetch(page, "GET", "/api/v1/projects");
-  const projectId = (projects.json as { projects?: Array<{ id: string }> })?.projects?.[0]?.id;
-  expect(projectId).toBeTruthy();
-
-  const tasks = await apiFetch(page, "GET", `/api/v1/projects/${projectId}/tasks`);
-  const taskId = ((tasks.json as { tasks?: Array<{ id: string }> })?.tasks ?? [])[0]?.id;
-  expect(taskId).toBeTruthy();
+  const createdProject = await apiFetch(page, "POST", "/api/v1/projects", {name: `Replay fixture ${Date.now()}`});
+  expect(createdProject.status).toBe(201);
+  const projectId = (createdProject.json as {project: {id: string}}).project.id;
+  const createdTask = await apiFetch(page, "POST", `/api/v1/projects/${projectId}/tasks`, {title: "Replay fixture task", status: "TODO", priority: "MEDIUM"});
+  expect(createdTask.status).toBe(201);
+  const taskId = (createdTask.json as {task: {id: string}}).task.id;
 
   const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const change = { type: "task_due_date", taskId, dueDate };

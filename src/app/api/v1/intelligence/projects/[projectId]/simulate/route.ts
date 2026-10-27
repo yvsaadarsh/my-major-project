@@ -169,7 +169,7 @@ export const POST = withTenantGuard<{ projectId: string }>(
     } catch (error) {
       // Call 1 failure is non-fatal: we can still run the deterministic engine
       // and return a result with a fallback narration.
-      console.error("[simulate] Call 1 (interpret) failed", error);
+      console.error("[simulate] Call 1 (interpret) failed", error instanceof SyntaxError ? "Malformed model JSON" : error);
       interpretedIntent = `Evaluate the impact of a ${change.type} change.`;
     }
 

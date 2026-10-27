@@ -91,7 +91,7 @@ function formatDate(value: string | null): string {
  * be produced the page simply does not mention it. A broken AI feature must
  * never make the deterministic analysis look broken.
  */
-type BriefState = "loading" | "streaming" | "done" | "hidden";
+type BriefState = "loading" | "streaming" | "done" | "hidden" | "unavailable";
 
 /**
  * Streamed prose, split into paragraphs on blank lines.
@@ -195,11 +195,9 @@ export default function ProjectIntelligencePage() {
           { cache: "no-store", credentials: "include", signal: controller.signal },
         );
 
-        // 501 means the deployment has no GEMINI_API_KEY. Any other failure
-        // is treated identically — the section disappears rather than showing an
-        // error for content the user never asked for.
+        // 501 means AI is unconfigured. Other failures remain visible for retry.
         if (!response.ok || !response.body) {
-          setBriefState("hidden");
+          setBriefState(response.status === 501 ? "hidden" : "unavailable");
           return;
         }
 
@@ -223,11 +221,11 @@ export default function ProjectIntelligencePage() {
         accumulated += decoder.decode();
         setBrief(accumulated);
         // An empty body means the stream failed before producing anything.
-        setBriefState(accumulated.trim().length > 0 ? "done" : "hidden");
+        setBriefState(accumulated.trim().length > 0 ? "done" : "unavailable");
       } catch {
         // Includes the abort below, where the component no longer exists and the
         // state setter is a no-op.
-        setBriefState("hidden");
+        if (!controller.signal.aborted) setBriefState("unavailable");
       }
     })();
 
@@ -400,7 +398,7 @@ export default function ProjectIntelligencePage() {
                   aria-busy={forecastState === "loading" || forecastState === "streaming"}
                   aria-live="polite"
                 >
-                  {forecastState === "insufficient" ? (
+                  {forecastState === "unavailable" ? <InlineError message="AI forecast could not complete. Use Refresh to retry." /> : forecastState === "insufficient" ? (
                     <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
                       Not enough history yet.
                     </p>
@@ -449,8 +447,8 @@ export default function ProjectIntelligencePage() {
                   produces them.
                 </p>
 
-                <div className="mt-5" aria-busy={briefState !== "done"} aria-live="polite">
-                  {brief.length === 0 ? <BriefSkeleton /> : <BriefBody text={brief} />}
+                <div className="mt-5" aria-busy={briefState === "loading" || briefState === "streaming"} aria-live="polite">
+                  {briefState === "unavailable" ? <InlineError message="AI brief could not complete. Use Refresh to retry." /> : brief.length === 0 ? <BriefSkeleton /> : <BriefBody text={brief} />}
                 </div>
 
                 {briefState === "streaming" && brief.length > 0 && (

@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 import { useApiQuery } from "@/lib/ui/use-api-query";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -20,6 +22,8 @@ type NotificationsResponse = {
  */
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({left: 16, top: 64});
+  const menuRef = useRef<HTMLDivElement>(null);
   const { data, loading, reload } = useApiQuery<NotificationsResponse>("/api/v1/notifications", "Unable to load notifications.");
   const notifications = data?.notifications ?? [];
   const unreadCount = data?.unreadCount ?? 0;
@@ -31,7 +35,7 @@ export function NotificationsBell() {
     }
 
     function onPointerDown(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     }
@@ -42,10 +46,15 @@ export function NotificationsBell() {
       }
     }
 
+    const close = () => setOpen(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close);
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
 
     return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close);
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
@@ -76,7 +85,13 @@ export function NotificationsBell() {
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const width = Math.min(352, window.innerWidth - 32);
+          setPosition({left: Math.max(16, Math.min(rect.right - width, window.innerWidth - width - 16)), top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 240))});
+          if (!open) void reload();
+          setOpen(value => !value);
+        }}
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -90,10 +105,12 @@ export function NotificationsBell() {
         )}
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
+          ref={menuRef}
+          style={{...position, maxHeight: `calc(100vh - ${position.top + 16}px)`}}
           role="menu"
-          className="absolute right-0 z-30 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-black/40 backdrop-blur-xl"
+          className="fixed z-50 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-black/40 backdrop-blur-xl"
         >
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <p className="text-sm font-semibold text-white">Notifications</p>
@@ -171,7 +188,7 @@ export function NotificationsBell() {
           >
             View all notifications
           </Link>
-        </div>
+        </div>, document.body
       )}
     </div>
   );

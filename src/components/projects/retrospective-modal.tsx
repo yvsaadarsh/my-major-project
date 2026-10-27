@@ -35,6 +35,7 @@ export function RetrospectiveModal({
   projectId: string;
   onClose: () => void;
 }) {
+  const [retry, setRetry] = useState(0);
   const [text, setText] = useState("");
   const [state, setState] = useState<RetroState>("loading");
 
@@ -86,7 +87,7 @@ export function RetrospectiveModal({
     })();
 
     return () => controller.abort();
-  }, [milestone.id, projectId]);
+  }, [milestone.id, projectId, retry]);
 
   // Escape closes, matching the command palette's behaviour.
   useEffect(() => {
@@ -148,6 +149,7 @@ export function RetrospectiveModal({
           {state === "unavailable" ? (
             <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
               This retrospective isn&apos;t available right now.
+              <button type="button" className="ml-2 text-violet-200 underline" onClick={() => setRetry(value => value + 1)}>Retry retrospective</button>
             </p>
           ) : text.length === 0 ? (
             <div className="space-y-3" aria-hidden>

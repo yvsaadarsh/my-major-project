@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useApiQuery } from "@/lib/ui/use-api-query";
 import { ArrowRight, CheckCircle2, Clock3, ShieldCheck, TrendingUp } from "lucide-react";
 
 import { AppShell, RoleNotice } from "@/components/app-shell";
@@ -9,16 +9,15 @@ import { EmptyState, InlineError, LoadingState } from "@/components/page-state";
 import { PermissionAction } from "@/components/permission-action";
 import { SectionCard } from "@/components/section-card";
 import {
-  apiRequest,
   formatStatus,
   type Project,
   type Task,
 } from "@/lib/ui/api-client";
-import { errorMessage } from "@/lib/ui/error-message";
 import { can } from "@/lib/ui/permissions";
 import { useAuthSession } from "@/lib/ui/use-auth-session";
 
 type Summary = {
+  activeProjectCount: number;
   completedTaskCount: number;
   memberCount: number;
   projectCount: number;
@@ -29,47 +28,15 @@ export default function DashboardPage() {
   const { error: authError, loading: authLoading, organization, role } = useAuthSession({
     requireOrganization: true,
   });
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!organization) {
-      return;
-    }
-
-    let mounted = true;
-    Promise.all([
-      apiRequest<{ summary: Summary }>("/api/v1/dashboard/summary"),
-      apiRequest<{ projects: Project[] }>("/api/v1/projects"),
-      apiRequest<{ tasks: Task[] }>("/api/v1/dashboard/my-tasks"),
-    ])
-      .then(([summaryResponse, projectsResponse, tasksResponse]) => {
-        if (!mounted) {
-          return;
-        }
-
-        setSummary(summaryResponse.summary);
-        setProjects(projectsResponse.projects);
-        setTasks(tasksResponse.tasks);
-      })
-      .catch((caught) => {
-        if (mounted) {
-          setError(errorMessage(caught, "Unable to load dashboard."));
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [organization]);
+  const scope = organization?.id ?? "";
+  const summaryQuery = useApiQuery<{summary: Summary}>(organization ? "/api/v1/dashboard/summary" : null, "Unable to load dashboard.", scope);
+  const projectQuery = useApiQuery<{projects: Project[]}>(organization ? "/api/v1/projects" : null, "Unable to load projects.", scope);
+  const taskQuery = useApiQuery<{tasks: Task[]}>(organization ? "/api/v1/dashboard/my-tasks" : null, "Unable to load tasks.", scope);
+  const summary = summaryQuery.data?.summary;
+  const projects = projectQuery.data?.projects ?? [];
+  const tasks = taskQuery.data?.tasks ?? [];
+  const loading = summaryQuery.loading || projectQuery.loading || taskQuery.loading;
+  const error = summaryQuery.error || projectQuery.error || taskQuery.error;
 
   if (authLoading) {
     return <LoadingState />;
@@ -87,14 +54,14 @@ export default function DashboardPage() {
       title="A clear command center for project momentum."
       description="Live data is loaded through tenant-scoped APIs, and available actions follow your active organization role."
     >
-      {error && <InlineError message={error} />}
+      {error && <div className="mb-4"><InlineError message={error} /><button type="button" className="mt-2 text-sm font-semibold text-teal-200" onClick={() => { void summaryQuery.reload(); void projectQuery.reload(); void taskQuery.reload(); }}>Retry dashboard</button></div>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Active projects", summary?.projectCount ?? 0, "Tenant scoped"],
-          ["Open tasks", summary ? summary.taskCount - summary.completedTaskCount : 0, "In progress"],
-          ["Done tasks", summary?.completedTaskCount ?? 0, "Completed"],
-          ["Members", summary?.memberCount ?? 0, "Active roster"],
+          ["Active projects", summary?.activeProjectCount ?? "—", "Tenant scoped"],
+          ["Open tasks", summary ? summary.taskCount - summary.completedTaskCount : "—", "In progress"],
+          ["Done tasks", summary?.completedTaskCount ?? "—", "Completed"],
+          ["Members", summary?.memberCount ?? "—", "Active roster"],
         ].map(([label, value, change]) => (
           <SectionCard key={label.toString()}>
             <p className="text-sm text-slate-400">{label}</p>
@@ -130,7 +97,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-6 space-y-4">
-            {projects.length === 0 && !loading ? (
+            {projects.length === 0 && !loading && !projectQuery.error ? (
               <EmptyState
                 title="No projects yet"
                 description="Finish onboarding or create a project from the board to populate the dashboard."
@@ -140,7 +107,7 @@ export default function DashboardPage() {
               projects.slice(0, 4).map((project) => (
                 <Link
                   key={project.id}
-                  href="/projects"
+                  href={`/projects?projectId=${encodeURIComponent(project.id)}`}
                   className="group block rounded-3xl border border-white/10 bg-white/[0.035] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-300/30 hover:bg-white/[0.06]"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -171,7 +138,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-6 space-y-3">
-            {tasks.length === 0 && !loading ? (
+            {tasks.length === 0 && !loading && !taskQuery.error ? (
               <EmptyState
                 title="Nothing assigned yet"
                 description="Create a task and assign it to yourself to see it here."

@@ -9,6 +9,12 @@ test("data pages hydrate, refresh, and preserve project view preferences", async
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   for (const path of [
+    "/dashboard",
+    "/projects",
+    "/progress",
+    "/shortcuts",
+    "/tasks/latest",
+    "/automations",
     "/analytics",
     "/intelligence",
     "/work-os",

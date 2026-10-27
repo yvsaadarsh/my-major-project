@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 import { useApiQuery } from "@/lib/ui/use-api-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -447,7 +449,7 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
         </span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 bg-slate-950/70 px-3 pt-16 backdrop-blur-sm sm:px-6 sm:pt-24"
           onClick={(event) => {
@@ -583,7 +585,7 @@ export function CommandCenter({ role = "MEMBER" }: { role?: Role }) {
               </>
             )}
           </div>
-        </div>
+        </div>, document.body
       )}
     </>
   );

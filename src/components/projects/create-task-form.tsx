@@ -1,5 +1,7 @@
 "use client";
 
+import type { ParsedTask } from "@/lib/ui/use-ai-compose";
+
 import { FormEvent, useState } from "react";
 import { Plus } from "lucide-react";
 
@@ -19,6 +21,7 @@ export function CreateTaskForm({
   project,
   members,
   initialTitle = "",
+  initialDraft,
   onCreated,
   onError,
 }: {
@@ -26,10 +29,19 @@ export function CreateTaskForm({
   project: Project | null;
   members: Member[];
   initialTitle?: string;
+  initialDraft?: ParsedTask;
   onCreated: (task: Task) => void;
   onError: (message: string) => void;
 }) {
-  const [title, setTitle] = useState(initialTitle);
+  const [title, setTitle] = useState(initialDraft?.title ?? initialTitle);
+  const [description, setDescription] = useState(initialDraft?.description ?? "");
+  const [priority, setPriority] = useState<ParsedTask["priority"]>(initialDraft?.priority ?? "MEDIUM");
+  const [dueDate, setDueDate] = useState(initialDraft?.dueDate ?? "");
+  const [previousDraft, setPreviousDraft] = useState(initialDraft);
+  if (previousDraft !== initialDraft) {
+    setPreviousDraft(initialDraft);
+    if (initialDraft) { setTitle(initialDraft.title); setDescription(initialDraft.description); setPriority(initialDraft.priority); setDueDate(initialDraft.dueDate ?? ""); }
+  }
   const [assignedToUserId, setAssignedToUserId] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -58,8 +70,9 @@ export function CreateTaskForm({
           method: "POST",
           body: {
             assignedToUserId: assignedToUserId || null,
-            description: "Created from the integrated task board.",
-            priority: "MEDIUM",
+            description,
+            priority,
+            dueDate: dueDate ? `${dueDate}T00:00:00.000Z` : null,
             status: "TODO",
             title,
           },
@@ -68,6 +81,7 @@ export function CreateTaskForm({
 
       onCreated(response.task);
       setTitle("");
+      setDescription(""); setPriority("MEDIUM"); setDueDate("");
       setAssignedToUserId("");
     } catch (caught) {
       onError(errorMessage(caught, "Unable to create task."));
@@ -88,6 +102,13 @@ export function CreateTaskForm({
           aria-label="Task title"
           className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition-all placeholder:text-slate-600 focus:border-teal-300/60 disabled:cursor-not-allowed disabled:text-slate-600"
         />
+        <textarea aria-label="Task description" placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 p-3 text-white" />
+        <div className="grid grid-cols-2 gap-3">
+          <select aria-label="Task priority" value={priority} onChange={e => setPriority(e.target.value as ParsedTask["priority"])} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950 p-3 text-white">
+            {["LOW", "MEDIUM", "HIGH", "URGENT"].map(value => <option key={value}>{value}</option>)}
+          </select>
+          <input aria-label="Task due date" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950 p-3 text-white" />
+        </div>
         <select
           value={assignedToUserId}
           onChange={(event) => setAssignedToUserId(event.target.value)}

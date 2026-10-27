@@ -1034,6 +1034,15 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  reset(); addTasks(4);
+  __ai.fastReply = '{"interpretedIntent":"private-task-sentinel';
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try { await runSimulate(statusChange("task_1")); }
+  finally { console.error = originalError; }
+  check("malformed model output is not logged", !logged.flat().map(String).join(" ").includes("private-task-sentinel"));
+
   for (const mode of ["success", "malformed", "failure"] as const) {
     reset(); addTasks(4);
     __ai.fastReply = mode === "malformed" ? "{}" : JSON.stringify({status: "simulated", interpretedIntent: "Complete task_1"});

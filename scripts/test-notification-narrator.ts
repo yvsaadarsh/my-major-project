@@ -53,7 +53,7 @@ function fakeClientReturning(text: string) {
     models: {
       generateContent() {
         calls.n += 1;
-        return { text };
+        return { text, candidates: [{ finishReason: "STOP" }] };
       },
       generateContentStream() {
         throw new Error("narrator must not stream");

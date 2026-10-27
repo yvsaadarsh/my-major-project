@@ -7,10 +7,10 @@ import { useEffect, useState } from "react";
  *
  * `insufficient` is distinct from `hidden`: the project is real but too young or
  * too small to forecast, which the user should be told plainly rather than left
- * wondering why the section is empty. `hidden` still covers every failure and
- * the not-configured (501) case, so a missing key degrades to nothing at all.
+ * wondering why the section is empty. `hidden` covers only the not-configured (501) case.
+ * Other failures are visible and can be retried with Refresh.
  */
-export type ForecastState = "loading" | "streaming" | "done" | "insufficient" | "hidden";
+export type ForecastState = "loading" | "streaming" | "done" | "insufficient" | "hidden" | "unavailable";
 
 /**
  * Stream the trajectory forecast for one project.
@@ -22,8 +22,7 @@ export type ForecastState = "loading" | "streaming" | "done" | "insufficient" | 
  *
  * Response shape: a `text/plain` token stream on success; a small JSON body
  * (`{ insufficient: true }`) when the project has too little history to
- * project from; any other non-OK status (including 501 "AI not configured")
- * collapses to `hidden`.
+ * project from; 501 hides an unconfigured feature; other failures become `unavailable`.
  */
 export function useForecastStream(projectId: string | undefined, refreshToken = 0) {
   const [forecast, setForecast] = useState("");
@@ -48,10 +47,9 @@ export function useForecastStream(projectId: string | undefined, refreshToken = 
           { cache: "no-store", credentials: "include", signal: controller.signal },
         );
 
-        // 501 (no key) and every other failure collapse to the same outcome: the
-        // section is not rendered.
+        // Hide only an unconfigured feature; keep upstream failures visible.
         if (!response.ok || !response.body) {
-          setState("hidden");
+          setState(response.status === 501 ? "hidden" : "unavailable");
           return;
         }
 
@@ -60,7 +58,7 @@ export function useForecastStream(projectId: string | undefined, refreshToken = 
           const payload = (await response.json().catch(() => null)) as
             | { insufficient?: boolean }
             | null;
-          setState(payload?.insufficient ? "insufficient" : "hidden");
+          setState(payload?.insufficient ? "insufficient" : "unavailable");
           return;
         }
 
@@ -83,11 +81,11 @@ export function useForecastStream(projectId: string | undefined, refreshToken = 
 
         accumulated += decoder.decode();
         setForecast(accumulated);
-        setState(accumulated.trim().length > 0 ? "done" : "hidden");
+        setState(accumulated.trim().length > 0 ? "done" : "unavailable");
       } catch {
         // Includes the abort below, where the component no longer exists and the
         // state setter is a no-op.
-        setState("hidden");
+        if (!controller.signal.aborted) setState("unavailable");
       }
     })();
 

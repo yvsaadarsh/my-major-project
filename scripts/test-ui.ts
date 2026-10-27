@@ -190,6 +190,26 @@ async function main() {
   );
   check(input.value === "New draft", "fresh draft replaces old handoff");
   cleanup();
+  Object.assign(globalThis, {sessionStorage: dom.window.sessionStorage});
+  const {saveTaskDraft, readTaskDraft} = await import("../src/lib/ui/task-draft");
+  const draft = {title: "Review", description: "Keep details", priority: "HIGH" as const, dueDate: "2026-11-06", notes: ""};
+  const draftId = saveTaskDraft("p", draft);
+  check(readTaskDraft(draftId, "p")?.description === draft.description, "draft handoff preserves description");
+  check(readTaskDraft(draftId, "other") === null, "draft cannot cross projects");
+  dom.window.sessionStorage.setItem(`projectos:task-draft:${draftId}`, "invalid json");
+  check(readTaskDraft(draftId, "p") === null, "malformed draft rejected");
+  const {SimulationResultPanel} = await import("../src/components/simulation/SimulationDiff");
+  const simulation = {
+    status: "simulated" as const, interpretedIntent: "Review task", narration: "Deterministic summary.",
+    aiProvenance: {interpretation: "fallback" as const, narration: "fallback" as const},
+    change: {type: "task_status" as const, taskId: "t", status: "DONE" as const},
+    changeDescription: {action: "Update task", fields: []}, snapshotToken: "token",
+    diff: {baseline: {score: 80, band: "Healthy" as const}, modified: {score: 80, band: "Healthy" as const}, healthDelta: 0, severity: "none" as const, verdict: "safe" as const, bandChanged: false, affectedTaskCount: 1, signalChanges: []},
+  };
+  const panel = render(React.createElement(SimulationResultPanel, {result: simulation, role: "ADMIN", applying: false, applyError: null, staleError: null, onApply() {}, onDiscard() {}}));
+  check(panel.queryByText("AI narration", {exact: true}) === null, "fallback never labeled AI narration");
+  check(Boolean(panel.getByText("Deterministic summary — AI narration unavailable")), "fallback visibly explained");
+  cleanup();
   console.log(`${passed} UI regression checks passed`);
 }
 main().catch((error) => {

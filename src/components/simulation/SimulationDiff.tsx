@@ -141,7 +141,7 @@ export function SimulationResultPanel({
         </p>
         <p className="mt-1.5 text-sm text-slate-200">{interpretedIntent}</p>
         <p className="mt-2 text-[11px] leading-5 text-slate-500">
-          AI description of your scenario. The change applied is the one above.
+          {result.aiProvenance?.interpretation === "gemini" ? "AI description of your scenario." : "AI interpretation unavailable; showing the structured change summary."} The change applied is the one above.
         </p>
       </div>
 
@@ -261,7 +261,7 @@ export function SimulationResultPanel({
       {/* AI narration */}
       <div className="rounded-2xl border border-violet-300/20 bg-violet-300/[0.04] p-4">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">
-          AI narration
+          {result.aiProvenance?.narration === "gemini" ? "AI narration" : "Deterministic summary — AI narration unavailable"}
         </p>
         <p className="mt-2 text-sm leading-7 text-slate-200">{narration}</p>
       </div>

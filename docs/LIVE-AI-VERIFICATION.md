@@ -1,6 +1,8 @@
 # Live Gemini Verification — Handoff Procedure
 
-Latest investigation: [2026-10-27 results](LIVE-AI-RESULTS-2026-10-27.md).
+Latest dashboard and live workflow evidence: [project review](PROJECT-REVIEW-VALIDATION.md).
+
+Earlier investigation: [2026-10-27 results](LIVE-AI-RESULTS-2026-10-27.md).
 Completion metadata and explicit simulation provenance now gate live success.
 The latest blocker is the provider daily free-tier request quota.
 

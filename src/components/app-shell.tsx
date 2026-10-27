@@ -180,6 +180,9 @@ export function AppShell({
             </div>
           </header>
 
+          <nav aria-label="Mobile navigation" className="mt-4 flex gap-2 overflow-x-auto rounded-2xl border border-white/10 p-2 lg:hidden">
+            {visibleNavItems.map(item => <Link key={item.href} href={item.href} className="shrink-0 rounded-xl px-3 py-2 text-sm text-slate-200 hover:bg-white/10">{item.label}</Link>)}
+          </nav>
           <div className="mt-6">{children}</div>
         </main>
       </div>

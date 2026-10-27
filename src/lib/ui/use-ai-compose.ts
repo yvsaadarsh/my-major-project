@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { saveTaskDraft } from "./task-draft";
 import { apiRequest, ClientApiError } from "@/lib/ui/api-client";
 
 /** Fields the AI parse route returns. Model output, already validated server-side. */
@@ -105,7 +106,7 @@ export function useAiCompose({ onClose, open }: UseAiComposeOptions) {
     setAiError(null);
 
     try {
-      await apiRequest(`/api/v1/projects/${aiProjectId}/tasks`, {
+      const created = await apiRequest<{task: {id: string}}>(`/api/v1/projects/${aiProjectId}/tasks`, {
         method: "POST",
         body: {
           title: aiParsed.title,
@@ -120,7 +121,7 @@ export function useAiCompose({ onClose, open }: UseAiComposeOptions) {
         },
       });
       onClose();
-      router.refresh();
+      router.push(`/tasks/${created.task.id}`);
     } catch (caught) {
       setAiBusy(false);
       setAiPhase("preview");
@@ -135,15 +136,11 @@ export function useAiCompose({ onClose, open }: UseAiComposeOptions) {
       return;
     }
 
-    // Hand the draft to the standard task form. Only the fields that form
-    // actually exposes (project + title) are carried; the rest would be dropped.
-    const params = new URLSearchParams({ new: "task" });
-    if (aiProjectId) {
-      params.set("projectId", aiProjectId);
-    }
-    if (aiParsed.title) {
-      params.set("title", aiParsed.title);
-    }
+    if (!aiProjectId) return;
+    let draftId: string;
+    try { draftId = saveTaskDraft(aiProjectId, aiParsed); }
+    catch { setAiError("Could not save the draft for editing. You can still create it here."); return; }
+    const params = new URLSearchParams({new: "task", projectId: aiProjectId, draft: draftId});
 
     onClose();
     router.push(`/projects?${params.toString()}`);
