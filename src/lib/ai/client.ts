@@ -27,18 +27,18 @@
 import { GoogleGenAI, ApiError } from "@google/genai";
 
 /**
- * A Pro model for output a human reads as prose — narratives, retrospectives,
- * forecasts. Slower and pricier, noticeably better at not sounding generic.
- * Overridable via `GEMINI_QUALITY_MODEL`.
+ * The model for output a human reads as prose — narratives, retrospectives,
+ * forecasts. Defaults to Gemini 3.8 Flash (fast and capable, supports streaming);
+ * override via `GEMINI_QUALITY_MODEL` (e.g. a Pro model) for a higher-tier model.
  */
-export const QUALITY_MODEL = process.env.GEMINI_QUALITY_MODEL?.trim() || "gemini-2.5-pro";
+export const QUALITY_MODEL = process.env.GEMINI_QUALITY_MODEL?.trim() || "gemini-3.8-flash";
 
 /**
  * A Flash model for short, structured, or high-volume work — JSON extraction,
  * one-line notifications. Fast enough to sit in a request path.
  * Overridable via `GEMINI_FAST_MODEL`.
  */
-export const FAST_MODEL = process.env.GEMINI_FAST_MODEL?.trim() || "gemini-2.5-flash";
+export const FAST_MODEL = process.env.GEMINI_FAST_MODEL?.trim() || "gemini-3.8-flash";
 
 // Thinking tokens share this budget on current Gemini models. Keep legacy
 // defaults, but allow a bounded environment override for the selected model.

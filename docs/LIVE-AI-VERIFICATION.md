@@ -286,7 +286,7 @@ Error taxonomy (the client normalizes each to a distinct message):
 | `rate limited (429) after retries` | quota/rate | **FAIL (quota)** |
 | `timed out after N ms` | deadline hit | raise `GEMINI_TIMEOUT_MS` / investigate latency |
 
-Models: `gemini-2.5-pro` (quality/streamed), `gemini-2.5-flash` (fast/structured),
+Models: `gemini-3.8-flash` (default for both quality/streamed and fast/structured),
 overridable via `GEMINI_QUALITY_MODEL`/`GEMINI_FAST_MODEL`. Total output budgets
 (including thinking) can be set with `GEMINI_FAST_MAX_TOKENS` and
 `GEMINI_QUALITY_MAX_TOKENS` (capped at 8192; defaults 512/1024). The latest

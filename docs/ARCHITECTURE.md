@@ -90,7 +90,7 @@ server-derived tenant context — never from the request body or query string.
 | `src/lib/domain/automation-engine.ts` | Pure trigger→condition→action planning + deterministic dedupe keys |
 | `src/lib/automation/executor.ts` | Idempotent persistence of automation plans (AutomationRun ledger); inline + scheduled dispatch |
 | `src/lib/notifications/service.ts` | Notification creation with preference filtering + unread dedupe |
-| `src/lib/ai/client.ts` | Server-only Gemini wrapper: `streamQuality` (gemini-2.5-pro, streamed) and `callFast` (gemini-2.5-flash, buffered). Bounded timeout, transient-only retries, redacted errors and injected-client test seam |
+| `src/lib/ai/client.ts` | Server-only Gemini wrapper: `streamQuality` (gemini-3.8-flash, streamed) and `callFast` (gemini-3.8-flash, buffered). Bounded timeout, transient-only retries, redacted errors and injected-client test seam |
 | `src/lib/ai/prompts.ts` | Named system-prompt constants. One place to review and diff prompt wording |
 | `src/lib/validators.ts` | Zod request schemas |
 | `src/lib/db.ts` | Prisma client (pg driver adapter, hot-reload safe) |
@@ -133,8 +133,8 @@ Notifications: `notifications`, `notifications/:id`, `notifications/read-all`,
 ## AI layer (Stage 2)
 
 `src/lib/ai/**` is a leaf module wrapping the Google Gemini SDK. Two entry points:
-`streamQuality` (gemini-2.5-pro, streamed, for prose a user watches appear)
-and `callFast` (gemini-2.5-flash, buffered, for short or structured output).
+`streamQuality` (gemini-3.8-flash, streamed, for prose a user watches appear)
+and `callFast` (gemini-3.8-flash, buffered, for short or structured output).
 
 Non-negotiables:
 
